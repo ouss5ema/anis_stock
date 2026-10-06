@@ -1,0 +1,16 @@
+[Unit]
+Description=Stock Management API (Docker Compose, rootless)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/stock-management/app
+Environment=DOCKER_HOST=unix:///run/user/%U/docker.sock
+ExecStart=/usr/bin/docker compose --env-file /opt/stock-management/app/.env.production -f /opt/stock-management/app/docker-compose.prod.yml up -d
+ExecStop=/usr/bin/docker compose --env-file /opt/stock-management/app/.env.production -f /opt/stock-management/app/docker-compose.prod.yml stop
+TimeoutStartSec=180
+
+[Install]
+WantedBy=default.target

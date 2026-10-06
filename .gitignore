@@ -1,0 +1,89 @@
+# Environment
+.env
+.env.local
+.env.*.local
+.env.production
+!.env.example
+!.env.production.example
+!env.production.example
+
+# Node
+node_modules/
+npm-debug.log*
+backend/node_modules/
+backend/dist/
+
+# Prisma
+backend/prisma/*.db
+backend/prisma/*.db-journal
+
+# Flutter
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/build/
+mobile/.pub-cache/
+mobile/.pub/
+mobile/coverage/
+
+# Android secrets
+mobile/android/key.properties
+*.jks
+*.keystore
+
+# Backups
+backups/
+deploy/backups/
+deploy/certbot/conf/
+deploy/certbot/www/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+postgres_data/
+
+# Logs
+*.log
+
+# Node
+node_modules/
+npm-debug.log*
+backend/node_modules/
+backend/dist/
+
+# Prisma
+backend/prisma/*.db
+backend/prisma/*.db-journal
+
+# Flutter
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/build/
+mobile/.pub-cache/
+mobile/.pub/
+mobile/coverage/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+postgres_data/
+
+# Logs
+*.log

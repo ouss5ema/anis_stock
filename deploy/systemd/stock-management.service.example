@@ -1,0 +1,18 @@
+[Unit]
+Description=Stock Management API (Docker Compose)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=stockapp
+Group=stockapp
+WorkingDirectory=/opt/stock-management/app
+Environment=DOCKER_HOST=unix:///run/user/UID_STOCKAPP/docker.sock
+ExecStart=/usr/bin/docker compose --env-file /opt/stock-management/app/.env.production -f docker-compose.prod.yml up -d
+ExecStop=/usr/bin/docker compose --env-file /opt/stock-management/app/.env.production -f docker-compose.prod.yml stop
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

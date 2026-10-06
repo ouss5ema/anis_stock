@@ -1,0 +1,27 @@
+# Android release signing
+
+Do not commit a real keystore or `key.properties`.
+
+1. Create a keystore (once):
+
+```bash
+keytool -genkey -v -keystore %USERPROFILE%\stock-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias stock
+```
+
+2. Create `mobile/android/key.properties` (gitignored):
+
+```properties
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=stock
+storeFile=C:\\Users\\YOU\\stock-release.jks
+```
+
+3. Build:
+
+```bash
+cd mobile
+flutter build apk --release --dart-define=API_BASE_URL=https://api-stock.example.com/api --dart-define=APP_ENV=production
+```
+
+Without `key.properties`, Gradle falls back to the debug keystore so a local unsigned-style release APK can still be produced for internal tests.

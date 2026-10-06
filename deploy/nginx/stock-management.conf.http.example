@@ -1,0 +1,33 @@
+# Drop-in for the VPS host Nginx.
+# Copy to /etc/nginx/sites-available/stock-management.conf
+# then: sudo ln -s /etc/nginx/sites-available/stock-management.conf /etc/nginx/sites-enabled/
+#
+# Do NOT replace /etc/nginx/nginx.conf
+# Do NOT remove the other application's site files.
+#
+# Replace api-stock.example.com and 3100 if you changed API_HOST_PORT.
+
+server {
+  listen 80;
+  listen [::]:80;
+  server_name api-stock.example.com;
+
+  client_max_body_size 2m;
+
+  location /.well-known/acme-challenge/ {
+    root /var/www/certbot;
+  }
+
+  location / {
+    proxy_pass http://127.0.0.1:3100;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 10s;
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+  }
+}
