@@ -18,7 +18,7 @@ void main() {
     );
     expect(
       userFacingMessage(const ApiException('Invalid or expired token', statusCode: 401)),
-      'Session expirée. Reconnectez-vous.',
+      'Votre session a expiré. Veuillez vous reconnecter.',
     );
     expect(
       userFacingMessage(

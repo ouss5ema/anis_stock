@@ -1,3 +1,5 @@
+import 'package:stock_management/data/models/product.dart';
+
 class NamedRef {
   const NamedRef({required this.id, required this.name, this.type});
 
@@ -177,6 +179,29 @@ class StockMovement {
   }
 }
 
+class TopProduct {
+  const TopProduct({
+    required this.id,
+    required this.name,
+    required this.quantity,
+    required this.amount,
+  });
+
+  final String id;
+  final String name;
+  final String quantity;
+  final String amount;
+
+  factory TopProduct.fromJson(Map<String, dynamic> json) {
+    return TopProduct(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? 'Produit',
+      quantity: json['quantity']?.toString() ?? '0',
+      amount: json['amount']?.toString() ?? '0',
+    );
+  }
+}
+
 class DashboardSnapshot {
   const DashboardSnapshot({
     required this.purchaseCount,
@@ -190,6 +215,9 @@ class DashboardSnapshot {
     required this.recentPurchases,
     required this.recentSales,
     required this.recentMovements,
+    this.outOfStockProducts = const [],
+    this.lowStockProducts = const [],
+    this.topProducts = const [],
   });
 
   final int purchaseCount;
@@ -203,6 +231,9 @@ class DashboardSnapshot {
   final List<Purchase> recentPurchases;
   final List<Sale> recentSales;
   final List<StockMovement> recentMovements;
+  final List<Product> outOfStockProducts;
+  final List<Product> lowStockProducts;
+  final List<TopProduct> topProducts;
 
   factory DashboardSnapshot.fromJson(Map<String, dynamic> json) {
     final today = json['today'] as Map<String, dynamic>? ?? {};
@@ -227,6 +258,18 @@ class DashboardSnapshot {
       recentMovements: (json['recentMovements'] as List<dynamic>? ?? [])
           .whereType<Map<String, dynamic>>()
           .map(StockMovement.fromJson)
+          .toList(),
+      outOfStockProducts: (json['outOfStockProducts'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(Product.fromJson)
+          .toList(),
+      lowStockProducts: (json['lowStockProducts'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(Product.fromJson)
+          .toList(),
+      topProducts: (json['topProducts'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(TopProduct.fromJson)
           .toList(),
     );
   }

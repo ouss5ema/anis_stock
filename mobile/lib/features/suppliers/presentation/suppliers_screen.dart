@@ -11,8 +11,21 @@ import 'package:stock_management/data/models/partner_stats.dart';
 import 'package:stock_management/data/models/supplier.dart';
 import 'package:stock_management/data/services/service_providers.dart';
 
-final suppliersProvider = FutureProvider.family<PaginatedResult<Supplier>, String>((ref, search) {
-  return ref.watch(supplierServiceProvider).list(search: search, includeInactive: true);
+class SuppliersQuery {
+  const SuppliersQuery({this.search = '', this.type});
+
+  final String search;
+  final String? type;
+
+  @override
+  bool operator ==(Object other) => other is SuppliersQuery && other.search == search && other.type == type;
+
+  @override
+  int get hashCode => Object.hash(search, type);
+}
+
+final suppliersProvider = FutureProvider.family<PaginatedResult<Supplier>, SuppliersQuery>((ref, query) {
+  return ref.watch(supplierServiceProvider).list(search: query.search, type: query.type, includeInactive: true);
 });
 
 class SuppliersScreen extends ConsumerStatefulWidget {
@@ -24,6 +37,7 @@ class SuppliersScreen extends ConsumerStatefulWidget {
 
 class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
   String _search = '';
+  String? _type;
 
   String _typeLabel(String type) {
     switch (type) {
@@ -38,27 +52,55 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final suppliers = ref.watch(suppliersProvider(_search));
+    final query = SuppliersQuery(search: _search, type: _type);
+    final suppliers = ref.watch(suppliersProvider(query));
+    final active = [
+      if (_search.isNotEmpty) 'Recherche : $_search',
+      if (_type != null) 'Type : ${_typeLabel(_type!)}',
+    ];
     return Scaffold(
       appBar: AppBar(title: const Text('Fournisseurs')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           await context.push('/suppliers/new');
-          ref.invalidate(suppliersProvider(_search));
+          ref.invalidate(suppliersProvider);
         },
         child: const Icon(Icons.add),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
             child: SearchField(hint: 'Rechercher', onChanged: (value) => setState(() => _search = value)),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                FilterChoice(label: 'Tous', selected: _type == null, onSelected: () => setState(() => _type = null)),
+                FilterChoice(label: 'Tabac', selected: _type == 'TABAC', onSelected: () => setState(() => _type = 'TABAC')),
+                FilterChoice(label: 'Télécom', selected: _type == 'TELECOM', onSelected: () => setState(() => _type = 'TELECOM')),
+                FilterChoice(label: 'Autre', selected: _type == 'OTHER', onSelected: () => setState(() => _type = 'OTHER')),
+              ],
+            ),
+          ),
+          ActiveFiltersBar(
+            labels: active,
+            onReset: () => setState(() {
+              _search = '';
+              _type = null;
+            }),
           ),
           Expanded(
             child: suppliers.when(
               data: (data) {
                 if (data.items.isEmpty) {
-                  return const EmptyState(icon: Icons.local_shipping_outlined, title: 'Aucun fournisseur');
+                  return const EmptyState(
+                    icon: Icons.local_shipping_outlined,
+                    title: 'Aucun fournisseur trouvé',
+                    subtitle: 'Essayez de modifier votre recherche ou vos filtres.',
+                  );
                 }
                 return ListView.separated(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 88),
@@ -82,7 +124,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => ErrorView(message: error.toString()),
+              error: (error, _) => ErrorView(message: userFacingMessage(error)),
             ),
           ),
         ],

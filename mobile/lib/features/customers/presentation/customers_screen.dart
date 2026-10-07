@@ -11,8 +11,21 @@ import 'package:stock_management/data/models/paginated_result.dart';
 import 'package:stock_management/data/models/partner_stats.dart';
 import 'package:stock_management/data/services/service_providers.dart';
 
-final customersProvider = FutureProvider.family<PaginatedResult<Customer>, String>((ref, search) {
-  return ref.watch(customerServiceProvider).list(search: search, includeInactive: true);
+class CustomersQuery {
+  const CustomersQuery({this.search = '', this.type});
+
+  final String search;
+  final String? type;
+
+  @override
+  bool operator ==(Object other) => other is CustomersQuery && other.search == search && other.type == type;
+
+  @override
+  int get hashCode => Object.hash(search, type);
+}
+
+final customersProvider = FutureProvider.family<PaginatedResult<Customer>, CustomersQuery>((ref, query) {
+  return ref.watch(customerServiceProvider).list(search: query.search, type: query.type, includeInactive: true);
 });
 
 class CustomersScreen extends ConsumerStatefulWidget {
@@ -24,6 +37,7 @@ class CustomersScreen extends ConsumerStatefulWidget {
 
 class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   String _search = '';
+  String? _type;
 
   String _typeLabel(String type) {
     switch (type) {
@@ -40,27 +54,56 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final customers = ref.watch(customersProvider(_search));
+    final query = CustomersQuery(search: _search, type: _type);
+    final customers = ref.watch(customersProvider(query));
+    final active = [
+      if (_search.isNotEmpty) 'Recherche : $_search',
+      if (_type != null) 'Type : ${_typeLabel(_type!)}',
+    ];
     return Scaffold(
       appBar: AppBar(title: const Text('Clients')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           await context.push('/customers/new');
-          ref.invalidate(customersProvider(_search));
+          ref.invalidate(customersProvider);
         },
         child: const Icon(Icons.add),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
             child: SearchField(hint: 'Rechercher', onChanged: (value) => setState(() => _search = value)),
+          ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                FilterChoice(label: 'Tous', selected: _type == null, onSelected: () => setState(() => _type = null)),
+                FilterChoice(label: 'Free shop', selected: _type == 'FREESHOP', onSelected: () => setState(() => _type = 'FREESHOP')),
+                FilterChoice(label: 'Supermarché', selected: _type == 'SUPERMARKET', onSelected: () => setState(() => _type = 'SUPERMARKET')),
+                FilterChoice(label: 'Magasin', selected: _type == 'SHOP', onSelected: () => setState(() => _type = 'SHOP')),
+                FilterChoice(label: 'Autre', selected: _type == 'OTHER', onSelected: () => setState(() => _type = 'OTHER')),
+              ],
+            ),
+          ),
+          ActiveFiltersBar(
+            labels: active,
+            onReset: () => setState(() {
+              _search = '';
+              _type = null;
+            }),
           ),
           Expanded(
             child: customers.when(
               data: (data) {
                 if (data.items.isEmpty) {
-                  return const EmptyState(icon: Icons.storefront_outlined, title: 'Aucun client');
+                  return const EmptyState(
+                    icon: Icons.storefront_outlined,
+                    title: 'Aucun client trouvé',
+                    subtitle: 'Essayez de modifier votre recherche ou vos filtres.',
+                  );
                 }
                 return ListView.separated(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 88),
@@ -84,7 +127,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => ErrorView(message: error.toString()),
+              error: (error, _) => ErrorView(message: userFacingMessage(error)),
             ),
           ),
         ],

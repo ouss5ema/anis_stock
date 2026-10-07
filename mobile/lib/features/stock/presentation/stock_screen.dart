@@ -11,8 +11,8 @@ import 'package:stock_management/data/models/product.dart';
 import 'package:stock_management/data/services/service_providers.dart';
 import 'package:stock_management/features/auth/providers/auth_provider.dart';
 
-class _StockQuery {
-  const _StockQuery({this.search = '', this.filter = 'all', this.categoryId, this.sort = 'name'});
+class StockQuery {
+  const StockQuery({this.search = '', this.filter = 'all', this.categoryId, this.sort = 'name'});
 
   final String search;
   final String filter;
@@ -21,7 +21,7 @@ class _StockQuery {
 
   @override
   bool operator ==(Object other) =>
-      other is _StockQuery &&
+      other is StockQuery &&
       other.search == search &&
       other.filter == filter &&
       other.categoryId == categoryId &&
@@ -35,13 +35,13 @@ final stockCategoriesProvider = FutureProvider<PaginatedResult<Category>>((ref) 
   return ref.watch(categoryServiceProvider).list();
 });
 
-final stockListProvider = FutureProvider.family<PaginatedResult<Product>, _StockQuery>((ref, query) {
+final stockListProvider = FutureProvider.family<PaginatedResult<Product>, StockQuery>((ref, query) {
   return ref.watch(productServiceProvider).list(
         search: query.search,
         lowStock: query.filter == 'low',
         outOfStock: query.filter == 'out',
         categoryId: query.categoryId,
-        pageSize: 80,
+        pageSize: 100,
       );
 });
 
@@ -58,12 +58,33 @@ class _StockScreenState extends ConsumerState<StockScreen> {
   String? _categoryId;
   String _sort = 'name';
 
+  StockQuery get _query => StockQuery(search: _search, filter: _filter, categoryId: _categoryId, sort: _sort);
+
+  void _reset() {
+    setState(() {
+      _search = '';
+      _filter = 'all';
+      _categoryId = null;
+      _sort = 'name';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final query = _StockQuery(search: _search, filter: _filter, categoryId: _categoryId, sort: _sort);
+    final query = _query;
     final stock = ref.watch(stockListProvider(query));
     final categories = ref.watch(stockCategoriesProvider);
     final isAdmin = ref.watch(authProvider).user?.role == 'ADMIN';
+    final categoryName = categories.asData?.value.items
+        .where((category) => category.id == _categoryId)
+        .map((category) => category.name)
+        .firstOrNull;
+    final active = [
+      if (_search.isNotEmpty) 'Recherche : $_search',
+      if (categoryName != null) 'Catégorie : $categoryName',
+      if (_filter == 'low') 'Stock : faible',
+      if (_filter == 'out') 'Stock : rupture',
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -90,15 +111,11 @@ class _StockScreenState extends ConsumerState<StockScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                ChoiceChip(label: const Text('Tous'), selected: _filter == 'all', onSelected: (_) => setState(() => _filter = 'all')),
-                const SizedBox(width: 8),
-                ChoiceChip(label: const Text('Stock faible'), selected: _filter == 'low', onSelected: (_) => setState(() => _filter = 'low')),
-                const SizedBox(width: 8),
-                ChoiceChip(label: const Text('Rupture'), selected: _filter == 'out', onSelected: (_) => setState(() => _filter = 'out')),
-                const SizedBox(width: 8),
-                ChoiceChip(label: const Text('Nom'), selected: _sort == 'name', onSelected: (_) => setState(() => _sort = 'name')),
-                const SizedBox(width: 8),
-                ChoiceChip(label: const Text('Stock'), selected: _sort == 'stock', onSelected: (_) => setState(() => _sort = 'stock')),
+                FilterChoice(label: 'Tous', selected: _filter == 'all', onSelected: () => setState(() => _filter = 'all')),
+                FilterChoice(label: 'Stock faible', selected: _filter == 'low', onSelected: () => setState(() => _filter = 'low')),
+                FilterChoice(label: 'Rupture', selected: _filter == 'out', onSelected: () => setState(() => _filter = 'out')),
+                FilterChoice(label: 'Trier par nom', selected: _sort == 'name', onSelected: () => setState(() => _sort = 'name')),
+                FilterChoice(label: 'Trier par stock', selected: _sort == 'stock', onSelected: () => setState(() => _sort = 'stock')),
               ],
             ),
           ),
@@ -129,7 +146,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
             loading: () => const SizedBox.shrink(),
             error: (_, _) => const SizedBox.shrink(),
           ),
-          const SizedBox(height: 8),
+          ActiveFiltersBar(labels: active, onReset: _reset),
           Expanded(
             child: stock.when(
               data: (data) {
@@ -141,13 +158,13 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                   return const EmptyState(
                     icon: Icons.inventory_2_outlined,
                     title: 'Aucun produit trouvé',
-                    subtitle: 'Modifiez la recherche ou les filtres.',
+                    subtitle: 'Essayez de modifier votre recherche ou vos filtres.',
                   );
                 }
                 return RefreshIndicator(
                   onRefresh: () async => ref.invalidate(stockListProvider(query)),
                   child: ListView.separated(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                     itemCount: items.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
@@ -162,7 +179,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                                 children: [
                                   Text(product.name, style: Theme.of(context).textTheme.titleMedium),
                                   Text('${product.categoryName ?? 'Sans catégorie'} · ${unitLabel(product.unit)}'),
-                                  Text('Seuil ${formatDt(product.minimumStock)} · ${formatDtLabel(product.estimatedValue)}'),
+                                  Text('Seuil ${formatDt(product.minimumStock)}'),
                                   if (isAdmin)
                                     TextButton(
                                       onPressed: () => context.push('/stock/adjust/${product.id}'),

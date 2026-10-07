@@ -14,14 +14,14 @@ class ProductService {
     bool outOfStock = false,
     String? categoryId,
     int page = 1,
-    int pageSize = 50,
+    int pageSize = 100,
     bool includeInactive = false,
   }) {
     return _apiClient.get(
       ApiEndpoints.products,
       query: {
         'page': page,
-        'pageSize': pageSize,
+        'pageSize': pageSize > 100 ? 100 : pageSize,
         if (search != null && search.isNotEmpty) 'search': search,
         if (lowStock) 'lowStock': 'true',
         if (outOfStock) 'outOfStock': 'true',

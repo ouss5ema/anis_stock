@@ -63,6 +63,10 @@ class AppTheme {
           textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
         ),
       ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
     );
   }
 }

@@ -4,7 +4,7 @@ function decimalToString(value) {
   return decimal.toString(value);
 }
 
-function stockStatus(currentStock, minimumStock) {
+function getStockStatus(currentStock, minimumStock) {
   if (currentStock === undefined || minimumStock === undefined) {
     return undefined;
   }
@@ -12,7 +12,7 @@ function stockStatus(currentStock, minimumStock) {
   if (current.lessThanOrEqualTo(0)) {
     return 'OUT';
   }
-  if (current.lessThanOrEqualTo(decimal.toDecimal(minimumStock))) {
+  if (current.greaterThan(0) && current.lessThanOrEqualTo(decimal.toDecimal(minimumStock))) {
     return 'LOW';
   }
   return 'NORMAL';
@@ -80,7 +80,7 @@ function serializeProduct(product) {
         ? decimal.toDecimal(product.currentStock).greaterThan(0) &&
           decimal.toDecimal(product.currentStock).lessThanOrEqualTo(decimal.toDecimal(product.minimumStock))
         : undefined,
-    stockStatus: stockStatus(product.currentStock, product.minimumStock),
+    stockStatus: getStockStatus(product.currentStock, product.minimumStock),
     isActive: product.isActive,
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
@@ -282,6 +282,7 @@ function serializeStockMovement(movement) {
 
 module.exports = {
   decimalToString,
+  getStockStatus,
   serializeUser,
   serializeCategory,
   serializeProduct,

@@ -16,7 +16,7 @@ String mapApiMessage(ApiException error) {
     if (lower.contains('invalid email or password')) {
       return 'Email ou mot de passe incorrect.';
     }
-    return 'Session expirée. Reconnectez-vous.';
+    return 'Votre session a expiré. Veuillez vous reconnecter.';
   }
   if (error.statusCode == 403) {
     return 'Vous n’avez pas l’autorisation d’effectuer cette action.';

@@ -49,7 +49,7 @@ async function applyMovement(tx, {
 
   if (newStock.isNegative()) {
     throw ApiError.badRequest(
-      `Insufficient stock for ${product.name} (${product.sku}). Available: ${previousStock.toFixed(3)}, requested: ${qty.toFixed(3)}`
+      `Insufficient stock for ${product.name}. Available: ${previousStock.toFixed(3)}, requested: ${qty.toFixed(3)}`
     );
   }
 

@@ -18,25 +18,26 @@ class AppEnv {
 
   /// Chrome uses localhost. The Android emulator uses 10.0.2.2.
   /// Release APKs must pass --dart-define=API_BASE_URL=https://...
-  static String get apiBaseUrl {
-    if (_compileTimeApiBaseUrl.isNotEmpty) {
-      if (isReleaseBuild) {
-        _assertReleaseUrl(_compileTimeApiBaseUrl);
-      }
-      return _compileTimeApiBaseUrl;
-    }
-
+ static String get apiBaseUrl {
+  if (_compileTimeApiBaseUrl.isNotEmpty) {
     if (isReleaseBuild) {
-      throw StateError(
-        'API_BASE_URL must be provided with --dart-define for a release APK.',
-      );
+      _assertReleaseUrl(_compileTimeApiBaseUrl);
     }
-
-    if (kIsWeb) {
-      return 'http://192.168.1.103:3000/api';
-    }
-    return 'http://10.0.2.2:3000/api';
+    return _compileTimeApiBaseUrl;
   }
+
+  if (isReleaseBuild) {
+    throw StateError(
+      'API_BASE_URL must be provided with --dart-define for a release APK.',
+    );
+  }
+
+  if (kIsWeb) {
+    return 'http://164.132.101.55/api';
+  }
+
+  return 'http://10.0.2.2:3000/api';
+}
 
   static void _assertReleaseUrl(String url) {
     final lower = url.toLowerCase();

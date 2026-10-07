@@ -53,7 +53,12 @@ class DocumentLineCard extends StatelessWidget {
               IconButton(onPressed: onRemove, icon: const Icon(Icons.close)),
             ],
           ),
-          Text('${line.product.sku} · ${unitLabel(line.product.unit)}'),
+          Text(
+            [
+              if (line.product.sku != null && line.product.sku!.isNotEmpty) line.product.sku!,
+              unitLabel(line.product.unit),
+            ].join(' · '),
+          ),
           if (showStock)
             Text(
               stockError

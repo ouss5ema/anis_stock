@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:stock_management/core/network/api_exception.dart';
 import 'package:stock_management/core/utils/money.dart';
+import 'package:stock_management/core/utils/user_message.dart';
 import 'package:stock_management/core/widgets/ui_kit.dart';
 import 'package:stock_management/data/models/documents.dart';
+import 'package:stock_management/core/data_refresh.dart';
 import 'package:stock_management/data/services/service_providers.dart';
-import 'package:stock_management/features/sales/presentation/sales_screen.dart';
 
 final saleDetailProvider = FutureProvider.family<Sale, String>((ref, id) {
   return ref.watch(saleServiceProvider).getById(id);
@@ -58,11 +59,11 @@ class SaleDetailScreen extends ConsumerWidget {
                   try {
                     await ref.read(saleServiceProvider).cancel(id, reason: 'Annulation depuis l’application');
                     ref.invalidate(saleDetailProvider(id));
-                    ref.invalidate(salesProvider);
+                    invalidateOperationalData(ref);
                     if (context.mounted) context.pop();
                   } on ApiException catch (error) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(userFacingMessage(error))));
                     }
                   }
                 },
@@ -72,7 +73,7 @@ class SaleDetailScreen extends ConsumerWidget {
           ],
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => ErrorView(message: error.toString()),
+        error: (error, _) => ErrorView(message: userFacingMessage(error)),
       ),
     );
   }

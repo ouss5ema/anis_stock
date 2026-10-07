@@ -1,3 +1,5 @@
+import 'package:stock_management/core/utils/stock_status.dart';
+
 class ProductSupplierLink {
   const ProductSupplierLink({
     required this.supplierId,
@@ -22,7 +24,7 @@ class ProductSupplierLink {
 class Product {
   const Product({
     required this.id,
-    required this.sku,
+    this.sku,
     required this.name,
     this.description,
     required this.categoryId,
@@ -41,7 +43,7 @@ class Product {
   });
 
   final String id;
-  final String sku;
+  final String? sku;
   final String name;
   final String? description;
   final String categoryId;
@@ -60,9 +62,13 @@ class Product {
 
   factory Product.fromJson(Map<String, dynamic> json) {
     final category = json['category'] as Map<String, dynamic>?;
+    final currentStock = json['currentStock']?.toString() ?? '0';
+    final minimumStock = json['minimumStock']?.toString() ?? '0';
+    final status = json['stockStatus'] as String? ??
+        computeStockStatus(currentStock: currentStock, minimumStock: minimumStock);
     return Product(
       id: json['id'] as String,
-      sku: json['sku'] as String,
+      sku: json['sku'] as String?,
       name: json['name'] as String,
       description: json['description'] as String?,
       categoryId: json['categoryId'] as String,
@@ -70,11 +76,11 @@ class Product {
       unit: json['unit'] as String,
       purchasePrice: json['purchasePrice']?.toString() ?? '0',
       salePrice: json['salePrice']?.toString() ?? '0',
-      currentStock: json['currentStock']?.toString() ?? '0',
-      minimumStock: json['minimumStock']?.toString() ?? '0',
-      isLowStock: json['isLowStock'] as bool? ?? false,
-      isOutOfStock: json['isOutOfStock'] as bool? ?? false,
-      stockStatus: json['stockStatus'] as String? ?? 'NORMAL',
+      currentStock: currentStock,
+      minimumStock: minimumStock,
+      isLowStock: json['isLowStock'] as bool? ?? status == 'LOW',
+      isOutOfStock: json['isOutOfStock'] as bool? ?? status == 'OUT',
+      stockStatus: status,
       isActive: json['isActive'] as bool? ?? true,
       estimatedValue: json['estimatedValue']?.toString(),
       suppliers: (json['suppliers'] as List<dynamic>? ?? [])

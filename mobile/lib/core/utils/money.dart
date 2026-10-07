@@ -12,7 +12,17 @@ String formatDt(String? raw, {int scale = 3}) {
   final text = value.toString();
   final parts = text.split('.');
   final fraction = (parts.length > 1 ? parts[1] : '').padRight(scale, '0');
-  return '${parts[0]}.${fraction.substring(0, scale)}';
+  final digits = parts[0].replaceAll('-', '');
+  final buffer = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    final remaining = digits.length - i;
+    if (i > 0 && remaining % 3 == 0) {
+      buffer.write(' ');
+    }
+    buffer.write(digits[i]);
+  }
+  final grouped = parts[0].startsWith('-') ? '-$buffer' : buffer.toString();
+  return '$grouped.${fraction.substring(0, scale)}';
 }
 
 String formatDtLabel(String? raw) => '${formatDt(raw)} DT';

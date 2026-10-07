@@ -10,8 +10,7 @@ import 'package:stock_management/core/widgets/pickers.dart';
 import 'package:stock_management/core/widgets/ui_kit.dart';
 import 'package:stock_management/data/models/customer.dart';
 import 'package:stock_management/data/services/service_providers.dart';
-import 'package:stock_management/features/home/presentation/home_screen.dart';
-import 'package:stock_management/features/sales/presentation/sales_screen.dart';
+import 'package:stock_management/core/data_refresh.dart';
 
 class SaleFormScreen extends ConsumerStatefulWidget {
   const SaleFormScreen({super.key});
@@ -69,6 +68,12 @@ class _SaleFormScreenState extends ConsumerState<SaleFormScreen> {
       setState(() => _error = _stockError(overflow.first));
       return;
     }
+    final confirmed = await confirmAction(
+      context,
+      title: 'Enregistrer la vente',
+      message: 'Client : ${_customer!.name}\n${_lines.length} ligne(s)\nTotal : ${formatDtLabel(_total)}',
+    );
+    if (!confirmed) return;
 
     setState(() {
       _saving = true;
@@ -90,8 +95,7 @@ class _SaleFormScreenState extends ConsumerState<SaleFormScreen> {
             .toList(),
       });
       if (!mounted) return;
-      ref.invalidate(salesProvider);
-      ref.invalidate(dashboardProvider);
+      invalidateOperationalData(ref);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Vente enregistrée · Stock mis à jour')),
       );

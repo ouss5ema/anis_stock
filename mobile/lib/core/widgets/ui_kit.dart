@@ -177,15 +177,80 @@ class StockStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     switch (status) {
       case 'OUT':
-        return StatusChip(label: 'Rupture', color: colors.error);
+        return const StatusChip(label: 'Rupture', color: Color(0xFFDC2626));
       case 'LOW':
-        return StatusChip(label: 'Stock faible', color: const Color(0xFFB45309));
+        return const StatusChip(label: 'Stock faible', color: Color(0xFFEA580C));
       default:
-        return StatusChip(label: 'Normal', color: colors.primary);
+        return const StatusChip(label: 'Normal', color: Color(0xFF15803D));
     }
+  }
+}
+
+class FilterChoice extends StatelessWidget {
+  const FilterChoice({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => onSelected(),
+      ),
+    );
+  }
+}
+
+class ActiveFiltersBar extends StatelessWidget {
+  const ActiveFiltersBar({
+    super.key,
+    required this.labels,
+    required this.onReset,
+  });
+
+  final List<String> labels;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    if (labels.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: labels
+                  .map(
+                    (label) => Chip(
+                      visualDensity: VisualDensity.compact,
+                      label: Text(label, style: const TextStyle(fontSize: 12)),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+          TextButton(onPressed: onReset, child: const Text('Réinitialiser')),
+        ],
+      ),
+    );
   }
 }
 

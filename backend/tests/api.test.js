@@ -148,6 +148,54 @@ describe('product, dashboard and stock queries', () => {
     await prisma.product.delete({ where: { id: created.id } });
   });
 
+  it('creates products without SKU and keeps SKU unique when present', async () => {
+    const category = await prisma.category.findFirst({ where: { isActive: true } });
+    assert.ok(category);
+
+    const first = await productService.createProduct({
+      name: 'Produit sans SKU 1',
+      categoryId: category.id,
+      unit: 'PACK',
+      purchasePrice: '1.000',
+      salePrice: '2.000',
+      minimumStock: '5',
+    });
+    const second = await productService.createProduct({
+      sku: '',
+      name: 'Produit sans SKU 2',
+      categoryId: category.id,
+      unit: 'PACK',
+      purchasePrice: '1.000',
+      salePrice: '2.000',
+      minimumStock: '5',
+    });
+    assert.equal(first.sku, null);
+    assert.equal(second.sku, null);
+    assert.equal(first.stockStatus, 'OUT');
+
+    const withSku = await productService.createProduct({
+      sku: `TEST-SKU-${Date.now()}`,
+      name: 'Produit avec SKU',
+      categoryId: category.id,
+      unit: 'PACK',
+      purchasePrice: '1.000',
+      salePrice: '2.000',
+      minimumStock: '0',
+    });
+    assert.ok(withSku.sku);
+
+    await prisma.product.deleteMany({ where: { id: { in: [first.id, second.id, withSku.id] } } });
+  });
+
+  it('computes stock statuses from current and minimum stock', async () => {
+    const { getStockStatus } = require('../src/utils/serialize');
+    assert.equal(getStockStatus(0, 5), 'OUT');
+    assert.equal(getStockStatus(1, 5), 'LOW');
+    assert.equal(getStockStatus(5, 5), 'LOW');
+    assert.equal(getStockStatus(6, 5), 'NORMAL');
+    assert.equal(getStockStatus(1, 0), 'NORMAL');
+  });
+
   it('returns dashboard statistics consistent with confirmed documents', async () => {
     const dashboard = await dashboardService.getDashboard('30d');
     const [purchaseCount, saleCount] = await Promise.all([

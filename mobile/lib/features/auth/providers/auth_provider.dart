@@ -52,7 +52,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (state.status == AuthStatus.authenticated) {
       state = const AuthState(
         status: AuthStatus.unauthenticated,
-        errorMessage: 'Session expirée. Reconnectez-vous.',
+        errorMessage: 'Votre session a expiré. Veuillez vous reconnecter.',
       );
     }
   }

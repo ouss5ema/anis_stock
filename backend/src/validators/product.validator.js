@@ -5,9 +5,26 @@ const productUnitEnum = z.enum(['UNIT', 'PACK', 'CARTON', 'BOX', 'RECHARGE', 'OT
 
 const decimalString = decimalNonNegative;
 
+const optionalSku = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((value) => {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value == null) {
+      return null;
+    }
+    const normalized = value.trim().toUpperCase();
+    return normalized === '' ? null : normalized;
+  })
+  .refine((value) => value == null || value.length <= 60, {
+    message: 'SKU must be at most 60 characters',
+  });
+
 const createProductSchema = z.object({
   body: z.object({
-    sku: z.string().trim().min(1).max(60).toUpperCase(),
+    sku: optionalSku,
     name: z.string().trim().min(2).max(160),
     description: z.string().trim().max(1000).optional().nullable(),
     categoryId: z.string().uuid(),
@@ -24,7 +41,7 @@ const updateProductSchema = z
   .object({
     body: z
       .object({
-        sku: z.string().trim().min(1).max(60).toUpperCase().optional(),
+        sku: optionalSku,
         name: z.string().trim().min(2).max(160).optional(),
         description: z.string().trim().max(1000).optional().nullable(),
         categoryId: z.string().uuid().optional(),

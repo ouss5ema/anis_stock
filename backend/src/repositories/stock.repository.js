@@ -9,10 +9,11 @@ const movementInclude = {
   },
 };
 
-function buildWhere({ productId, type, from, to }) {
+function buildWhere({ productId, type, types, from, to }) {
+  const typeFilter = types?.length ? { type: { in: types } } : type ? { type } : {};
   return {
     ...(productId ? { productId } : {}),
-    ...(type ? { type } : {}),
+    ...typeFilter,
     ...(from || to
       ? {
           createdAt: {
@@ -24,8 +25,8 @@ function buildWhere({ productId, type, from, to }) {
   };
 }
 
-async function findMany({ skip, take, productId, type, from, to }) {
-  const where = buildWhere({ productId, type, from, to });
+async function findMany({ skip, take, productId, type, types, from, to }) {
+  const where = buildWhere({ productId, type, types, from, to });
   const [items, total] = await Promise.all([
     prisma.stockMovement.findMany({
       where,

@@ -4,6 +4,7 @@ import 'package:stock_management/core/utils/labels.dart';
 import 'package:stock_management/core/utils/money.dart';
 import 'package:stock_management/core/widgets/ui_kit.dart';
 import 'package:stock_management/data/models/customer.dart';
+import 'package:stock_management/data/models/paginated_result.dart';
 import 'package:stock_management/data/models/product.dart';
 import 'package:stock_management/data/models/supplier.dart';
 import 'package:stock_management/data/services/service_providers.dart';
@@ -45,12 +46,22 @@ class _ProductPickerSheet extends ConsumerStatefulWidget {
 }
 
 class _ProductPickerSheetState extends ConsumerState<_ProductPickerSheet> {
-  String _search = '';
+  late Future<PaginatedResult<Product>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(productServiceProvider).list(pageSize: 100);
+  }
+
+  void _search(String value) {
+    setState(() {
+      _future = ref.read(productServiceProvider).list(search: value, pageSize: 100);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final async = ref.watch(productServiceProvider).list(search: _search, pageSize: 30);
-
     return SizedBox(
       height: MediaQuery.of(context).size.height * 0.75,
       child: Padding(
@@ -59,16 +70,19 @@ class _ProductPickerSheetState extends ConsumerState<_ProductPickerSheet> {
           children: [
             Text('Choisir un produit', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 12),
-            SearchField(hint: 'Nom ou SKU', onChanged: (value) => setState(() => _search = value)),
+            SearchField(hint: 'Nom ou SKU', onChanged: _search),
             const SizedBox(height: 12),
             Expanded(
               child: FutureBuilder(
-                future: async,
+                future: _future,
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final items = snapshot.data!.items;
+                  if (snapshot.hasError) {
+                    return const EmptyState(icon: Icons.error_outline, title: 'Impossible de charger les produits');
+                  }
+                  final items = snapshot.data?.items ?? [];
                   if (items.isEmpty) {
                     return const EmptyState(icon: Icons.search_off, title: 'Aucun produit');
                   }
@@ -86,7 +100,12 @@ class _ProductPickerSheetState extends ConsumerState<_ProductPickerSheet> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(product.name, style: Theme.of(context).textTheme.titleMedium),
-                                  Text('${product.sku} · Stock ${formatDt(product.currentStock)} ${unitLabel(product.unit)}'),
+                                  Text(
+                                    [
+                                      if (product.sku != null && product.sku!.isNotEmpty) product.sku!,
+                                      'Stock ${formatDt(product.currentStock)} ${unitLabel(product.unit)}',
+                                    ].join(' · '),
+                                  ),
                                   Text(
                                     widget.showSalePrice
                                         ? 'Prix ${formatDtLabel(product.salePrice)}'
@@ -119,14 +138,22 @@ class _SupplierPickerSheet extends ConsumerStatefulWidget {
 }
 
 class _SupplierPickerSheetState extends ConsumerState<_SupplierPickerSheet> {
-  String _search = '';
+  late Future<PaginatedResult<Supplier>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(supplierServiceProvider).list();
+  }
 
   @override
   Widget build(BuildContext context) {
     return _PartnerSheet(
       title: 'Choisir un fournisseur',
-      future: ref.watch(supplierServiceProvider).list(search: _search),
-      onSearch: (value) => setState(() => _search = value),
+      future: _future,
+      onSearch: (value) => setState(() {
+        _future = ref.read(supplierServiceProvider).list(search: value);
+      }),
       itemBuilder: (context, index, data) {
         final supplier = data[index] as Supplier;
         return AppCard(
@@ -146,14 +173,22 @@ class _CustomerPickerSheet extends ConsumerStatefulWidget {
 }
 
 class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
-  String _search = '';
+  late Future<PaginatedResult<Customer>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(customerServiceProvider).list();
+  }
 
   @override
   Widget build(BuildContext context) {
     return _PartnerSheet(
       title: 'Choisir un client',
-      future: ref.watch(customerServiceProvider).list(search: _search),
-      onSearch: (value) => setState(() => _search = value),
+      future: _future,
+      onSearch: (value) => setState(() {
+        _future = ref.read(customerServiceProvider).list(search: value);
+      }),
       itemBuilder: (context, index, data) {
         final customer = data[index] as Customer;
         return AppCard(
@@ -194,10 +229,13 @@ class _PartnerSheet extends StatelessWidget {
               child: FutureBuilder(
                 future: future,
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final items = (snapshot.data as dynamic).items as List<dynamic>;
+                  if (snapshot.hasError) {
+                    return const EmptyState(icon: Icons.error_outline, title: 'Impossible de charger la liste');
+                  }
+                  final items = (snapshot.data as dynamic)?.items as List<dynamic>? ?? [];
                   if (items.isEmpty) {
                     return const EmptyState(icon: Icons.search_off, title: 'Aucun résultat');
                   }

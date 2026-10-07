@@ -26,11 +26,16 @@ class HomeScreen extends ConsumerWidget {
     final period = ref.watch(dashboardPeriodProvider);
     final dashboard = ref.watch(dashboardProvider);
     final colors = Theme.of(context).colorScheme;
-    final periodLabel = period == '7d'
-        ? '7 derniers jours'
+    final salesLabel = period == '7d'
+        ? 'Ventes sur 7 jours'
         : period == '30d'
-            ? '30 derniers jours'
-            : 'Aujourd’hui';
+            ? 'Ventes sur 30 jours'
+            : 'Ventes aujourd’hui';
+    final purchasesLabel = period == '7d'
+        ? 'Achats sur 7 jours'
+        : period == '30d'
+            ? 'Achats sur 30 jours'
+            : 'Achats aujourd’hui';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Accueil')),
@@ -47,25 +52,25 @@ class HomeScreen extends ConsumerWidget {
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
-            Text(periodLabel, style: TextStyle(color: colors.onSurfaceVariant)),
+            Text('Aperçu de votre activité', style: TextStyle(color: colors.onSurfaceVariant)),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               children: [
-                ChoiceChip(
-                  label: const Text('Aujourd’hui'),
+                FilterChoice(
+                  label: 'Aujourd’hui',
                   selected: period == 'today',
-                  onSelected: (_) => ref.read(dashboardPeriodProvider.notifier).state = 'today',
+                  onSelected: () => ref.read(dashboardPeriodProvider.notifier).state = 'today',
                 ),
-                ChoiceChip(
-                  label: const Text('7 jours'),
+                FilterChoice(
+                  label: '7 jours',
                   selected: period == '7d',
-                  onSelected: (_) => ref.read(dashboardPeriodProvider.notifier).state = '7d',
+                  onSelected: () => ref.read(dashboardPeriodProvider.notifier).state = '7d',
                 ),
-                ChoiceChip(
-                  label: const Text('30 jours'),
+                FilterChoice(
+                  label: '30 jours',
                   selected: period == '30d',
-                  onSelected: (_) => ref.read(dashboardPeriodProvider.notifier).state = '30d',
+                  onSelected: () => ref.read(dashboardPeriodProvider.notifier).state = '30d',
                 ),
               ],
             ),
@@ -78,19 +83,19 @@ class HomeScreen extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: _MetricCard(
-                          label: 'Ventes',
-                          value: formatDtLabel(data.saleAmount),
-                          subtitle: '${data.saleCount} vente(s)',
-                          onTap: () => context.go('/sales'),
+                          label: 'Produits',
+                          value: '${data.productCount}',
+                          subtitle: 'Articles actifs',
+                          onTap: () => context.go('/stock'),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: _MetricCard(
-                          label: 'Achats',
-                          value: formatDtLabel(data.purchaseAmount),
-                          subtitle: '${data.purchaseCount} achat(s)',
-                          onTap: () => context.go('/purchases'),
+                          label: 'Valeur du stock',
+                          value: formatDtLabel(data.stockValue),
+                          subtitle: 'Au prix d’achat',
+                          onTap: () => context.go('/stock'),
                         ),
                       ),
                     ],
@@ -100,31 +105,91 @@ class HomeScreen extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: _MetricCard(
-                          label: 'Stock faible',
-                          value: '${data.lowStockCount}',
-                          subtitle: '${data.outOfStockCount} rupture(s)',
-                          accent: data.lowStockCount > 0 || data.outOfStockCount > 0 ? colors.error : null,
+                          label: purchasesLabel,
+                          value: formatDtLabel(data.purchaseAmount),
+                          subtitle: '${data.purchaseCount} achat(s)',
+                          onTap: () => context.go('/purchases'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _MetricCard(
+                          label: salesLabel,
+                          value: formatDtLabel(data.saleAmount),
+                          subtitle: '${data.saleCount} vente(s)',
+                          onTap: () => context.go('/sales'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Text('Attention', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _MetricCard(
+                          label: 'Produits en rupture',
+                          value: '${data.outOfStockCount}',
+                          subtitle: data.outOfStockCount == 1 ? '1 produit' : '${data.outOfStockCount} produits',
+                          accent: data.outOfStockCount > 0 ? const Color(0xFFDC2626) : null,
                           onTap: () => context.go('/stock'),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: _MetricCard(
-                          label: 'Valeur stock',
-                          value: formatDtLabel(data.stockValue),
-                          subtitle: '${data.productCount} produits',
+                          label: 'Stock faible',
+                          value: '${data.lowStockCount}',
+                          subtitle: data.lowStockCount == 1 ? '1 produit' : '${data.lowStockCount} produits',
+                          accent: data.lowStockCount > 0 ? const Color(0xFFEA580C) : null,
                           onTap: () => context.go('/stock'),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  if (data.outOfStockProducts.isNotEmpty || data.lowStockProducts.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    ...data.outOfStockProducts.take(4).map(
+                          (product) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: AppCard(
+                              onTap: () => context.go('/stock'),
+                              child: Row(
+                                children: [
+                                  Expanded(child: Text(product.name)),
+                                  const StockStatusChip(status: 'OUT'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ...data.lowStockProducts.take(4).map(
+                          (product) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: AppCard(
+                              onTap: () => context.go('/stock'),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      '${product.name} · ${formatDt(product.currentStock)}',
+                                    ),
+                                  ),
+                                  const StockStatusChip(status: 'LOW'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                  ],
+                  const SizedBox(height: 12),
                   Text('Activité récente', style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
                   if (data.recentSales.isEmpty && data.recentPurchases.isEmpty && data.recentMovements.isEmpty)
                     const EmptyState(
                       icon: Icons.inbox_outlined,
-                      title: 'Aucune activité récente',
+                      title: 'Aucune activité sur cette période',
                     ),
                   ...data.recentSales.take(3).map(
                         (sale) => Padding(
@@ -132,7 +197,7 @@ class HomeScreen extends ConsumerWidget {
                           child: AppCard(
                             onTap: () => context.push('/sales/${sale.id}'),
                             child: Text(
-                              'Vente ${sale.referenceNumber} · ${sale.customer.name} · ${formatDtLabel(sale.totalAmount)}',
+                              'Vente · ${sale.customer.name} · ${formatDtLabel(sale.totalAmount)}',
                             ),
                           ),
                         ),
@@ -143,7 +208,7 @@ class HomeScreen extends ConsumerWidget {
                           child: AppCard(
                             onTap: () => context.push('/purchases/${purchase.id}'),
                             child: Text(
-                              'Achat ${purchase.referenceNumber} · ${purchase.supplier.name} · ${formatDtLabel(purchase.totalAmount)}',
+                              'Achat · ${purchase.supplier.name} · ${formatDtLabel(purchase.totalAmount)}',
                             ),
                           ),
                         ),
@@ -154,11 +219,29 @@ class HomeScreen extends ConsumerWidget {
                           child: AppCard(
                             onTap: () => context.push('/stock/movements'),
                             child: Text(
-                              '${formatDateTime(movement.createdAt)} · ${movementTypeLabel(movement.type)} · ${movement.productName ?? 'Produit'} · ${movement.signedQuantity}',
+                              '${formatDateTime(movement.createdAt)} · ${movementTypeLabel(movement.type)} · ${movement.productName ?? 'Produit'}',
                             ),
                           ),
                         ),
                       ),
+                  if (data.topProducts.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text('Produits les plus vendus', style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    ...data.topProducts.map(
+                      (product) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: AppCard(
+                          child: Row(
+                            children: [
+                              Expanded(child: Text(product.name)),
+                              Text(formatDtLabel(product.amount), style: const TextStyle(fontWeight: FontWeight.w700)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
               loading: () => const Padding(

@@ -106,15 +106,19 @@ async function createProduct(payload) {
   await assertCategoryExists(payload.categoryId);
   await assertSuppliersExist(payload.supplierIds);
 
-  const existingSku = await productRepository.findBySku(payload.sku);
-  if (existingSku) {
-    throw ApiError.conflict('A product with this SKU already exists');
+  const sku = payload.sku && String(payload.sku).trim() ? String(payload.sku).trim().toUpperCase() : null;
+  if (sku) {
+    const existingSku = await productRepository.findBySku(sku);
+    if (existingSku) {
+      throw ApiError.conflict('A product with this SKU already exists');
+    }
   }
 
   const { supplierIds, ...data } = payload;
 
   const product = await productRepository.create({
     ...data,
+    sku,
     currentStock: 0,
     suppliers: supplierIds?.length
       ? {
@@ -136,10 +140,14 @@ async function updateProduct(id, payload) {
     await assertCategoryExists(payload.categoryId);
   }
 
-  if (payload.sku && payload.sku !== product.sku) {
-    const existingSku = await productRepository.findBySku(payload.sku);
-    if (existingSku) {
-      throw ApiError.conflict('A product with this SKU already exists');
+  if (Object.prototype.hasOwnProperty.call(payload, 'sku')) {
+    const sku = payload.sku && String(payload.sku).trim() ? String(payload.sku).trim().toUpperCase() : null;
+    payload.sku = sku;
+    if (sku && sku !== product.sku) {
+      const existingSku = await productRepository.findBySku(sku);
+      if (existingSku) {
+        throw ApiError.conflict('A product with this SKU already exists');
+      }
     }
   }
 

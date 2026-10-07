@@ -8,7 +8,7 @@ import 'package:stock_management/core/widgets/ui_kit.dart';
 import 'package:stock_management/data/models/product.dart';
 import 'package:stock_management/data/services/service_providers.dart';
 import 'package:stock_management/features/auth/providers/auth_provider.dart';
-import 'package:stock_management/features/home/presentation/home_screen.dart';
+import 'package:stock_management/core/data_refresh.dart';
 
 class AdjustStockScreen extends ConsumerStatefulWidget {
   const AdjustStockScreen({super.key, required this.productId});
@@ -90,7 +90,7 @@ class _AdjustStockScreenState extends ConsumerState<AdjustStockScreen> {
             reason: _reasonController.text.trim(),
           );
       if (!mounted) return;
-      ref.invalidate(dashboardProvider);
+      invalidateOperationalData(ref);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ajustement enregistré · Stock mis à jour')),
       );

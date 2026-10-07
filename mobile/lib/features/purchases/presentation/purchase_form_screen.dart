@@ -9,8 +9,7 @@ import 'package:stock_management/core/widgets/pickers.dart';
 import 'package:stock_management/core/widgets/ui_kit.dart';
 import 'package:stock_management/data/models/supplier.dart';
 import 'package:stock_management/data/services/service_providers.dart';
-import 'package:stock_management/features/home/presentation/home_screen.dart';
-import 'package:stock_management/features/purchases/presentation/purchases_screen.dart';
+import 'package:stock_management/core/data_refresh.dart';
 
 class PurchaseFormScreen extends ConsumerStatefulWidget {
   const PurchaseFormScreen({super.key});
@@ -83,8 +82,7 @@ class _PurchaseFormScreenState extends ConsumerState<PurchaseFormScreen> {
             .toList(),
       });
       if (!mounted) return;
-      ref.invalidate(purchasesProvider);
-      ref.invalidate(dashboardProvider);
+      invalidateOperationalData(ref);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Achat enregistré · Stock mis à jour')),
       );

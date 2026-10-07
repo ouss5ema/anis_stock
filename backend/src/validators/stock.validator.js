@@ -7,6 +7,7 @@ const listMovementsSchema = paginatedQuery({
     .enum([
       'PURCHASE',
       'SALE',
+      'ADJUSTMENT',
       'ADJUSTMENT_IN',
       'ADJUSTMENT_OUT',
       'RETURN_PURCHASE',

@@ -9,6 +9,7 @@ const stockService = require('./stock.service');
 const movementTypes = [
   'PURCHASE',
   'SALE',
+  'ADJUSTMENT',
   'ADJUSTMENT_IN',
   'ADJUSTMENT_OUT',
   'RETURN_PURCHASE',
@@ -21,11 +22,14 @@ async function listMovements(query) {
     throw ApiError.badRequest('Invalid movement type');
   }
 
+  const types = type === 'ADJUSTMENT' ? ['ADJUSTMENT_IN', 'ADJUSTMENT_OUT'] : undefined;
+
   const { items, total } = await stockRepository.findMany({
     skip: (page - 1) * pageSize,
     take: pageSize,
     productId,
-    type,
+    type: types ? undefined : type,
+    types,
     from: from ? new Date(from) : undefined,
     to: to ? new Date(to) : undefined,
   });

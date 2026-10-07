@@ -9,9 +9,42 @@ import 'package:stock_management/data/models/category.dart';
 import 'package:stock_management/data/models/paginated_result.dart';
 import 'package:stock_management/data/models/product.dart';
 import 'package:stock_management/data/services/service_providers.dart';
+import 'package:stock_management/features/home/presentation/home_screen.dart';
+import 'package:stock_management/features/stock/presentation/movements_screen.dart';
+import 'package:stock_management/features/stock/presentation/stock_screen.dart';
 
-final productsListProvider = FutureProvider.family<PaginatedResult<Product>, String>((ref, search) {
-  return ref.watch(productServiceProvider).list(search: search, includeInactive: true);
+class ProductsQuery {
+  const ProductsQuery({
+    this.search = '',
+    this.categoryId,
+    this.filter = 'all',
+  });
+
+  final String search;
+  final String? categoryId;
+  final String filter;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ProductsQuery && other.search == search && other.categoryId == categoryId && other.filter == filter;
+
+  @override
+  int get hashCode => Object.hash(search, categoryId, filter);
+}
+
+final productCategoriesProvider = FutureProvider<PaginatedResult<Category>>((ref) {
+  return ref.watch(categoryServiceProvider).list();
+});
+
+final productsListProvider = FutureProvider.family<PaginatedResult<Product>, ProductsQuery>((ref, query) {
+  return ref.watch(productServiceProvider).list(
+        search: query.search,
+        includeInactive: true,
+        categoryId: query.categoryId,
+        lowStock: query.filter == 'low',
+        outOfStock: query.filter == 'out',
+        pageSize: 100,
+      );
 });
 
 class ProductsScreen extends ConsumerStatefulWidget {
@@ -23,37 +56,103 @@ class ProductsScreen extends ConsumerStatefulWidget {
 
 class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   String _search = '';
+  String? _categoryId;
+  String _filter = 'all';
+
+  ProductsQuery get _query => ProductsQuery(search: _search, categoryId: _categoryId, filter: _filter);
+
+  void _reset() {
+    setState(() {
+      _search = '';
+      _categoryId = null;
+      _filter = 'all';
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final products = ref.watch(productsListProvider(_search));
+    final products = ref.watch(productsListProvider(_query));
+    final categories = ref.watch(productCategoriesProvider);
+    final categoryName = categories.asData?.value.items
+        .where((category) => category.id == _categoryId)
+        .map((category) => category.name)
+        .firstOrNull;
+    final active = [
+      if (_search.isNotEmpty) 'Recherche : $_search',
+      if (categoryName != null) 'Catégorie : $categoryName',
+      if (_filter == 'low') 'Stock : faible',
+      if (_filter == 'out') 'Stock : rupture',
+    ];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Produits')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           await context.push('/products/new');
-          ref.invalidate(productsListProvider(_search));
+          ref.invalidate(productsListProvider);
         },
         child: const Icon(Icons.add),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
             child: SearchField(
               hint: 'Nom ou SKU',
               onChanged: (value) => setState(() => _search = value),
             ),
           ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                FilterChoice(label: 'Tous', selected: _filter == 'all', onSelected: () => setState(() => _filter = 'all')),
+                FilterChoice(label: 'Stock faible', selected: _filter == 'low', onSelected: () => setState(() => _filter = 'low')),
+                FilterChoice(label: 'Rupture', selected: _filter == 'out', onSelected: () => setState(() => _filter = 'out')),
+              ],
+            ),
+          ),
+          categories.when(
+            data: (data) => SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Row(
+                children: [
+                  FilterChip(
+                    label: const Text('Toutes catégories'),
+                    selected: _categoryId == null,
+                    onSelected: (_) => setState(() => _categoryId = null),
+                  ),
+                  ...data.items.map(
+                    (category) => Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: FilterChip(
+                        label: Text(category.name),
+                        selected: _categoryId == category.id,
+                        onSelected: (_) => setState(() => _categoryId = category.id),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            loading: () => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
+          ),
+          ActiveFiltersBar(labels: active, onReset: _reset),
           Expanded(
             child: products.when(
               data: (data) {
                 if (data.items.isEmpty) {
-                  return const EmptyState(icon: Icons.category_outlined, title: 'Aucun produit');
+                  return const EmptyState(
+                    icon: Icons.category_outlined,
+                    title: 'Aucun produit trouvé',
+                    subtitle: 'Essayez de modifier votre recherche ou vos filtres.',
+                  );
                 }
                 return RefreshIndicator(
-                  onRefresh: () async => ref.invalidate(productsListProvider(_search)),
+                  onRefresh: () async => ref.invalidate(productsListProvider(_query)),
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 88),
                     itemCount: data.items.length,
@@ -61,7 +160,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     itemBuilder: (context, index) {
                       final product = data.items[index];
                       return AppCard(
-                        onTap: () => context.push('/products/${product.id}/edit'),
+                        onTap: () async {
+                          await context.push('/products/${product.id}/edit');
+                          ref.invalidate(productsListProvider);
+                        },
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -73,7 +175,12 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 StockStatusChip(status: product.stockStatus),
                               ],
                             ),
-                            Text('${product.sku} · ${product.categoryName ?? ''}'),
+                            Text(
+                              [
+                                if (product.sku != null && product.sku!.isNotEmpty) product.sku!,
+                                product.categoryName ?? '',
+                              ].where((part) => part.isNotEmpty).join(' · '),
+                            ),
                             Text('Stock ${formatDt(product.currentStock)} · Seuil ${formatDt(product.minimumStock)}'),
                             Text('Achat ${formatDt(product.purchasePrice)} · Vente ${formatDt(product.salePrice)}'),
                             if (!product.isActive)
@@ -86,7 +193,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => ErrorView(message: error.toString()),
+              error: (error, _) => ErrorView(
+                message: userFacingMessage(error),
+                onRetry: () => ref.invalidate(productsListProvider(_query)),
+              ),
             ),
           ),
         ],
@@ -136,7 +246,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       setState(() {
         _categories = categories.items;
         if (product != null) {
-          _sku.text = product.sku;
+          _sku.text = product.sku ?? '';
           _name.text = product.name;
           _description.text = product.description ?? '';
           _purchase.text = formatDt(product.purchasePrice);
@@ -171,16 +281,17 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   }
 
   Future<void> _save() async {
-    if (_name.text.trim().length < 2 || _sku.text.trim().isEmpty || _categoryId == null) {
-      setState(() => _error = 'SKU, nom et catégorie sont obligatoires');
+    if (_name.text.trim().length < 2 || _categoryId == null) {
+      setState(() => _error = 'Le nom et la catégorie sont obligatoires');
       return;
     }
     setState(() {
       _saving = true;
       _error = null;
     });
+    final sku = _sku.text.trim();
     final body = {
-      'sku': _sku.text.trim(),
+      'sku': sku.isEmpty ? null : sku,
       'name': _name.text.trim(),
       'description': _description.text.trim().isEmpty ? null : _description.text.trim(),
       'categoryId': _categoryId,
@@ -196,9 +307,17 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       } else {
         await ref.read(productServiceProvider).update(widget.productId!, body);
       }
-      if (mounted) context.pop();
+      if (!mounted) return;
+      ref.invalidate(productsListProvider);
+      ref.invalidate(dashboardProvider);
+      ref.invalidate(stockListProvider);
+      ref.invalidate(movementsProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.productId == null ? 'Produit enregistré' : 'Produit mis à jour')),
+      );
+      context.pop();
     } on ApiException catch (error) {
-      setState(() => _error = error.message);
+      setState(() => _error = userFacingMessage(error));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -215,8 +334,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          TextField(controller: _sku, decoration: const InputDecoration(labelText: 'SKU')),
-          const SizedBox(height: 12),
           TextField(controller: _name, decoration: const InputDecoration(labelText: 'Nom')),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
@@ -227,6 +344,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             onChanged: (value) => setState(() => _categoryId = value),
             decoration: const InputDecoration(labelText: 'Catégorie'),
           ),
+          const SizedBox(height: 12),
+          TextField(controller: _sku, decoration: const InputDecoration(labelText: 'SKU (optionnel)')),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             initialValue: _unit,
@@ -242,13 +361,19 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             decoration: const InputDecoration(labelText: 'Unité'),
           ),
           const SizedBox(height: 12),
-          TextField(controller: _purchase, decoration: const InputDecoration(labelText: 'Prix d’achat indicatif')),
+          TextField(controller: _purchase, decoration: const InputDecoration(labelText: 'Prix d’achat')),
           const SizedBox(height: 12),
           TextField(controller: _sale, decoration: const InputDecoration(labelText: 'Prix de vente')),
           const SizedBox(height: 12),
-          TextField(controller: _minStock, decoration: const InputDecoration(labelText: 'Stock minimum')),
+          TextField(
+            controller: _minStock,
+            decoration: const InputDecoration(
+              labelText: 'Seuil d’alerte stock',
+              helperText: 'Alerte « stock faible » lorsque le stock atteint ce nombre.',
+            ),
+          ),
           const SizedBox(height: 12),
-          TextField(controller: _description, decoration: const InputDecoration(labelText: 'Description')),
+          TextField(controller: _description, decoration: const InputDecoration(labelText: 'Description (optionnel)')),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Actif'),
@@ -277,7 +402,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 trailing: Icon(Icons.chevron_right),
               ),
             ),
-            const Text('Le prix d’achat indicatif n’est pas un prix historique d’achat.'),
           ],
           if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           FilledButton(onPressed: _saving ? null : _save, child: const Text('Enregistrer')),

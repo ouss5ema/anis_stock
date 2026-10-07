@@ -1,79 +1,92 @@
 const { prisma } = require('../config/prisma');
 const decimal = require('../utils/decimal');
 const {
+  getStockStatus,
   serializePurchase,
   serializeSale,
   serializeStockMovement,
   serializeProduct,
 } = require('../utils/serialize');
 
-function startOfDay(date = new Date()) {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value;
+function tunisDateParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Tunis',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const value = (type) => parts.find((part) => part.type === type)?.value;
+  return {
+    year: value('year'),
+    month: value('month'),
+    day: value('day'),
+  };
 }
 
-function endOfDay(date = new Date()) {
-  const value = new Date(date);
-  value.setHours(23, 59, 59, 999);
-  return value;
+function startOfDayTunis(date = new Date()) {
+  const { year, month, day } = tunisDateParts(date);
+  return new Date(`${year}-${month}-${day}T00:00:00+01:00`);
+}
+
+function endOfDayTunis(date = new Date()) {
+  const { year, month, day } = tunisDateParts(date);
+  return new Date(`${year}-${month}-${day}T23:59:59.999+01:00`);
 }
 
 function periodRange(period = 'today') {
-  const to = endOfDay();
-  const from = startOfDay();
+  const to = endOfDayTunis();
+  const startToday = startOfDayTunis();
 
   if (period === '7d') {
-    from.setDate(from.getDate() - 6);
-    return { from, to, period: '7d' };
+    return { from: new Date(startToday.getTime() - 6 * 24 * 60 * 60 * 1000), to, period: '7d' };
   }
 
   if (period === '30d') {
-    from.setDate(from.getDate() - 29);
-    return { from, to, period: '30d' };
+    return { from: new Date(startToday.getTime() - 29 * 24 * 60 * 60 * 1000), to, period: '30d' };
   }
 
-  return { from, to, period: 'today' };
+  return { from: startToday, to, period: 'today' };
 }
 
 async function getDashboard(period = 'today') {
   const range = periodRange(period);
   const { from, to } = range;
   const confirmed = { status: 'CONFIRMED' };
+  const inPeriod = { gte: from, lte: to };
 
   const [
     purchasesToday,
     salesToday,
     purchaseAgg,
     saleAgg,
-    productCount,
     products,
     recentPurchases,
     recentSales,
     recentMovements,
     stockValueRows,
+    topSaleItems,
   ] = await Promise.all([
     prisma.purchase.count({
-      where: { ...confirmed, purchaseDate: { gte: from, lte: to } },
+      where: { ...confirmed, purchaseDate: inPeriod },
     }),
     prisma.sale.count({
-      where: { ...confirmed, saleDate: { gte: from, lte: to } },
+      where: { ...confirmed, saleDate: inPeriod },
     }),
     prisma.purchase.aggregate({
-      where: { ...confirmed, purchaseDate: { gte: from, lte: to } },
+      where: { ...confirmed, purchaseDate: inPeriod },
       _sum: { totalAmount: true },
     }),
     prisma.sale.aggregate({
-      where: { ...confirmed, saleDate: { gte: from, lte: to } },
+      where: { ...confirmed, saleDate: inPeriod },
       _sum: { totalAmount: true },
     }),
-    prisma.product.count({ where: { isActive: true } }),
     prisma.product.findMany({
       where: { isActive: true },
-      select: { currentStock: true, minimumStock: true },
+      include: { category: true },
+      orderBy: { name: 'asc' },
     }),
     prisma.purchase.findMany({
-      where: confirmed,
+      where: { ...confirmed, purchaseDate: inPeriod },
       orderBy: { createdAt: 'desc' },
       take: 5,
       include: {
@@ -82,7 +95,7 @@ async function getDashboard(period = 'today') {
       },
     }),
     prisma.sale.findMany({
-      where: confirmed,
+      where: { ...confirmed, saleDate: inPeriod },
       orderBy: { createdAt: 'desc' },
       take: 5,
       include: {
@@ -91,6 +104,7 @@ async function getDashboard(period = 'today') {
       },
     }),
     prisma.stockMovement.findMany({
+      where: { createdAt: inPeriod },
       orderBy: { createdAt: 'desc' },
       take: 8,
       include: {
@@ -102,35 +116,52 @@ async function getDashboard(period = 'today') {
       FROM products
       WHERE "isActive" = true
     `,
+    prisma.saleItem.groupBy({
+      by: ['productId'],
+      where: {
+        sale: { ...confirmed, saleDate: inPeriod },
+      },
+      _sum: { quantity: true, totalPrice: true },
+      orderBy: { _sum: { totalPrice: 'desc' } },
+      take: 5,
+    }),
   ]);
 
   let lowStockCount = 0;
   let outOfStockCount = 0;
+  const outOfStockProducts = [];
+  const lowStockProducts = [];
+
   for (const product of products) {
-    const current = decimal.toDecimal(product.currentStock);
-    const min = decimal.toDecimal(product.minimumStock);
-    if (current.lessThanOrEqualTo(0)) {
+    const status = getStockStatus(product.currentStock, product.minimumStock);
+    if (status === 'OUT') {
       outOfStockCount += 1;
-    } else if (current.lessThanOrEqualTo(min)) {
+      if (outOfStockProducts.length < 8) {
+        outOfStockProducts.push(serializeProduct(product));
+      }
+    } else if (status === 'LOW') {
       lowStockCount += 1;
+      if (lowStockProducts.length < 8) {
+        lowStockProducts.push(serializeProduct(product));
+      }
     }
   }
 
-  const lowStockProducts = await prisma.product.findMany({
-    where: { isActive: true },
-    include: { category: true },
-    orderBy: { name: 'asc' },
-    take: 200,
-  });
+  const topProductIds = topSaleItems.map((row) => row.productId);
+  const topProductRows = topProductIds.length
+    ? await prisma.product.findMany({
+        where: { id: { in: topProductIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const topNames = new Map(topProductRows.map((product) => [product.id, product.name]));
 
-  const alerts = lowStockProducts
-    .filter((product) => {
-      const current = decimal.toDecimal(product.currentStock);
-      const min = decimal.toDecimal(product.minimumStock);
-      return current.lessThanOrEqualTo(min);
-    })
-    .slice(0, 8)
-    .map(serializeProduct);
+  const topProducts = topSaleItems.map((row) => ({
+    id: row.productId,
+    name: topNames.get(row.productId) || 'Produit',
+    quantity: decimal.toString(row._sum.quantity || 0),
+    amount: decimal.toString(row._sum.totalPrice || 0),
+  }));
 
   return {
     period: range.period,
@@ -141,7 +172,7 @@ async function getDashboard(period = 'today') {
       saleAmount: decimal.toString(saleAgg._sum.totalAmount || 0),
     },
     stock: {
-      productCount,
+      productCount: products.length,
       lowStockCount,
       outOfStockCount,
       approximateValue: decimal.toString(stockValueRows[0]?.value || 0),
@@ -149,7 +180,10 @@ async function getDashboard(period = 'today') {
     recentPurchases: recentPurchases.map(serializePurchase),
     recentSales: recentSales.map(serializeSale),
     recentMovements: recentMovements.map(serializeStockMovement),
-    stockAlerts: alerts,
+    stockAlerts: [...outOfStockProducts, ...lowStockProducts].slice(0, 8),
+    outOfStockProducts,
+    lowStockProducts,
+    topProducts,
   };
 }
 

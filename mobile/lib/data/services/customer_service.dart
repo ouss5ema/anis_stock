@@ -10,6 +10,7 @@ class CustomerService {
 
   Future<PaginatedResult<Customer>> list({
     String? search,
+    String? type,
     int page = 1,
     bool includeInactive = false,
   }) {
@@ -17,8 +18,9 @@ class CustomerService {
       ApiEndpoints.customers,
       query: {
         'page': page,
-        'pageSize': 50,
+        'pageSize': 100,
         if (search != null && search.isNotEmpty) 'search': search,
+        if (type != null && type.isNotEmpty) 'type': type,
         if (includeInactive) 'includeInactive': 'true',
       },
       parser: (data) => PaginatedResult.fromJson(

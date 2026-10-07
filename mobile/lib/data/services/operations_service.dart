@@ -8,13 +8,24 @@ class PurchaseService {
 
   final ApiClient _apiClient;
 
-  Future<PaginatedResult<Purchase>> list({String? search, int page = 1}) {
+  Future<PaginatedResult<Purchase>> list({
+    String? search,
+    String? supplierId,
+    String? status,
+    String? from,
+    String? to,
+    int page = 1,
+  }) {
     return _apiClient.get(
       ApiEndpoints.purchases,
       query: {
         'page': page,
-        'pageSize': 30,
+        'pageSize': 100,
         if (search != null && search.isNotEmpty) 'search': search,
+        if (supplierId != null && supplierId.isNotEmpty) 'supplierId': supplierId,
+        if (status != null && status.isNotEmpty) 'status': status,
+        'from': ?from,
+        'to': ?to,
       },
       parser: (data) => PaginatedResult.fromJson(
         data as Map<String, dynamic>,
@@ -52,13 +63,24 @@ class SaleService {
 
   final ApiClient _apiClient;
 
-  Future<PaginatedResult<Sale>> list({String? search, int page = 1}) {
+  Future<PaginatedResult<Sale>> list({
+    String? search,
+    String? customerId,
+    String? status,
+    String? from,
+    String? to,
+    int page = 1,
+  }) {
     return _apiClient.get(
       ApiEndpoints.sales,
       query: {
         'page': page,
-        'pageSize': 30,
+        'pageSize': 100,
         if (search != null && search.isNotEmpty) 'search': search,
+        if (customerId != null && customerId.isNotEmpty) 'customerId': customerId,
+        if (status != null && status.isNotEmpty) 'status': status,
+        'from': ?from,
+        'to': ?to,
       },
       parser: (data) => PaginatedResult.fromJson(
         data as Map<String, dynamic>,
@@ -107,7 +129,7 @@ class StockService {
       ApiEndpoints.stockMovements,
       query: {
         'page': page,
-        'pageSize': 40,
+        'pageSize': 100,
         'productId': ?productId,
         'type': ?type,
         'from': ?from,
