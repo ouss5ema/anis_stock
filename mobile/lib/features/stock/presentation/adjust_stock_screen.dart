@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:stock_management/core/network/api_exception.dart';
 import 'package:stock_management/core/utils/money.dart';
+import 'package:stock_management/core/utils/number_input.dart';
 import 'package:stock_management/core/utils/user_message.dart';
+import 'package:stock_management/core/widgets/numeric_field.dart';
 import 'package:stock_management/core/widgets/ui_kit.dart';
 import 'package:stock_management/data/models/product.dart';
 import 'package:stock_management/data/services/service_providers.dart';
@@ -86,7 +88,7 @@ class _AdjustStockScreenState extends ConsumerState<AdjustStockScreen> {
       await ref.read(stockOpsServiceProvider).adjust(
             productId: widget.productId,
             direction: _direction,
-            quantity: _qtyController.text.trim(),
+            quantity: decimalForApi(_qtyController.text),
             reason: _reasonController.text.trim(),
           );
       if (!mounted) return;
@@ -129,10 +131,9 @@ class _AdjustStockScreenState extends ConsumerState<AdjustStockScreen> {
             onSelectionChanged: (value) => setState(() => _direction = value.first),
           ),
           const SizedBox(height: 12),
-          TextField(
+          DecimalTextField(
             controller: _qtyController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Quantité'),
+            labelText: 'Quantité',
           ),
           const SizedBox(height: 12),
           TextField(

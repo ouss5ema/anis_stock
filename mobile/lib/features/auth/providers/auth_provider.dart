@@ -6,6 +6,7 @@ import 'package:stock_management/core/providers.dart';
 import 'package:stock_management/core/utils/user_message.dart';
 import 'package:stock_management/data/models/user_account.dart';
 import 'package:stock_management/data/services/service_providers.dart';
+import 'package:stock_management/features/auth/providers/session_restorer.dart';
 
 enum AuthStatus { unknown, authenticated, unauthenticated }
 
@@ -39,12 +40,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   AuthNotifier(this._ref) : super(const AuthState(status: AuthStatus.unknown)) {
     _ref.read(apiClientProvider).onUnauthorized = expireSession;
     restoreSession();
-    Future<void>.delayed(const Duration(seconds: 4), () {
-      if (state.status == AuthStatus.unknown) {
-        state = const AuthState(status: AuthStatus.unauthenticated);
-      }
-    });
   }
+
+  static const sessionExpiredMessage = 'Session expirée. Reconnectez-vous.';
 
   final Ref _ref;
 
@@ -52,29 +50,54 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (state.status == AuthStatus.authenticated) {
       state = const AuthState(
         status: AuthStatus.unauthenticated,
-        errorMessage: 'Votre session a expiré. Veuillez vous reconnecter.',
+        errorMessage: sessionExpiredMessage,
       );
     }
   }
 
+  /// Restores the stored session before the router leaves the splash.
+  /// While the server is unreachable the status stays [AuthStatus.unknown]
+  /// with an [AuthState.errorMessage]: the token is kept and the splash
+  /// offers to retry.
   Future<void> restoreSession() async {
+    state = const AuthState(status: AuthStatus.unknown);
+    SessionRestoreResult result;
     try {
-      final token = await _ref.read(tokenStorageProvider).readToken();
-      if (token == null || token.isEmpty) {
-        state = const AuthState(status: AuthStatus.unauthenticated);
-        return;
-      }
+      result = await _ref.read(sessionRestorerProvider).restore();
+    } catch (error) {
+      result = SessionRestoreResult(
+        SessionRestoreOutcome.offline,
+        errorMessage: userFacingMessage(error),
+      );
+    }
+    if (!mounted) return;
 
-      final user = await _ref
-          .read(authServiceProvider)
-          .me()
-          .timeout(const Duration(seconds: 8));
+    switch (result.outcome) {
+      case SessionRestoreOutcome.authenticated:
+        state = AuthState(status: AuthStatus.authenticated, user: result.user);
+      case SessionRestoreOutcome.expired:
+        state = const AuthState(
+          status: AuthStatus.unauthenticated,
+          errorMessage: sessionExpiredMessage,
+        );
+      case SessionRestoreOutcome.none:
+      case SessionRestoreOutcome.apiChanged:
+        state = const AuthState(status: AuthStatus.unauthenticated);
+      case SessionRestoreOutcome.offline:
+        state = AuthState(
+          status: AuthStatus.unknown,
+          user: result.user,
+          errorMessage: result.errorMessage ?? 'Connexion impossible. Vérifiez votre connexion Internet.',
+        );
+    }
+  }
+
+  /// Opens the app with the cached user when the server could not be reached
+  /// at startup. The next 401 from the API still ends the session.
+  void continueOffline() {
+    final user = state.user;
+    if (state.status == AuthStatus.unknown && user != null) {
       state = AuthState(status: AuthStatus.authenticated, user: user);
-    } catch (_) {
-      try {
-        await _ref.read(tokenStorageProvider).clearToken();
-      } catch (_) {}
-      state = const AuthState(status: AuthStatus.unauthenticated);
     }
   }
 

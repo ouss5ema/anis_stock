@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 class AppEnv {
   static const String appName = String.fromEnvironment(
     'APP_NAME',
-    defaultValue: 'StockManager',
+    defaultValue: 'anis_stock',
   );
   static const String appVersion = String.fromEnvironment(
     'APP_VERSION',

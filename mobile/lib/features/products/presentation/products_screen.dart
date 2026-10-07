@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:stock_management/core/network/api_exception.dart';
 import 'package:stock_management/core/utils/money.dart';
+import 'package:stock_management/core/utils/number_input.dart';
 import 'package:stock_management/core/utils/user_message.dart';
+import 'package:stock_management/core/widgets/numeric_field.dart';
 import 'package:stock_management/core/widgets/ui_kit.dart';
 import 'package:stock_management/data/models/category.dart';
 import 'package:stock_management/data/models/paginated_result.dart';
@@ -249,9 +251,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           _sku.text = product.sku ?? '';
           _name.text = product.name;
           _description.text = product.description ?? '';
-          _purchase.text = formatDt(product.purchasePrice);
-          _sale.text = formatDt(product.salePrice);
-          _minStock.text = formatDt(product.minimumStock);
+          _purchase.text = formatDecimalForInput(product.purchasePrice);
+          _sale.text = formatDecimalForInput(product.salePrice);
+          _minStock.text = formatDecimalForInput(product.minimumStock);
           _unit = product.unit;
           _categoryId = product.categoryId;
           _isActive = product.isActive;
@@ -296,9 +298,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       'description': _description.text.trim().isEmpty ? null : _description.text.trim(),
       'categoryId': _categoryId,
       'unit': _unit,
-      'purchasePrice': _purchase.text.trim(),
-      'salePrice': _sale.text.trim(),
-      'minimumStock': _minStock.text.trim().isEmpty ? '0' : _minStock.text.trim(),
+      'purchasePrice': decimalForApi(_purchase.text),
+      'salePrice': decimalForApi(_sale.text),
+      'minimumStock': _minStock.text.trim().isEmpty ? '0' : decimalForApi(_minStock.text),
       'isActive': _isActive,
     };
     try {
@@ -361,16 +363,14 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             decoration: const InputDecoration(labelText: 'Unité'),
           ),
           const SizedBox(height: 12),
-          TextField(controller: _purchase, decoration: const InputDecoration(labelText: 'Prix d’achat')),
+          DecimalTextField(controller: _purchase, labelText: 'Prix d’achat'),
           const SizedBox(height: 12),
-          TextField(controller: _sale, decoration: const InputDecoration(labelText: 'Prix de vente')),
+          DecimalTextField(controller: _sale, labelText: 'Prix de vente'),
           const SizedBox(height: 12),
-          TextField(
+          DecimalTextField(
             controller: _minStock,
-            decoration: const InputDecoration(
-              labelText: 'Seuil d’alerte stock',
-              helperText: 'Alerte « stock faible » lorsque le stock atteint ce nombre.',
-            ),
+            labelText: 'Seuil d’alerte stock',
+            helperText: 'Alerte « stock faible » lorsque le stock atteint ce nombre.',
           ),
           const SizedBox(height: 12),
           TextField(controller: _description, decoration: const InputDecoration(labelText: 'Description (optionnel)')),

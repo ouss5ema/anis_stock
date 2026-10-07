@@ -18,7 +18,7 @@ class AuthService {
       body: {'email': email, 'password': password},
       parser: (data) => AuthSession.fromJson(data as Map<String, dynamic>),
     );
-    await _tokenStorage.saveToken(session.token);
+    await _persist(session);
     return session;
   }
 
@@ -32,8 +32,20 @@ class AuthService {
       body: {'name': name, 'email': email, 'password': password},
       parser: (data) => AuthSession.fromJson(data as Map<String, dynamic>),
     );
-    await _tokenStorage.saveToken(session.token);
+    await _persist(session);
     return session;
+  }
+
+  Future<void> _persist(AuthSession session) {
+    return _tokenStorage.saveSession(
+      StoredSession(
+        token: session.token,
+        apiBaseUrl: _apiClient.baseUrl,
+        userId: session.user.id,
+        userName: session.user.name,
+        userRole: session.user.role,
+      ),
+    );
   }
 
   Future<UserAccount> me() {
@@ -56,6 +68,6 @@ class AuthService {
   }
 
   Future<void> logout() {
-    return _tokenStorage.clearToken();
+    return _tokenStorage.clearSession();
   }
 }

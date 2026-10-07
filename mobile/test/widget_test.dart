@@ -12,7 +12,7 @@ void main() {
       find.byWidgetPredicate(
         (widget) =>
             widget is Text &&
-            (widget.data == 'StockManager' || widget.data == 'Connexion'),
+            (widget.data == 'anis_stock' || widget.data == 'Connexion'),
       ),
       findsWidgets,
     );

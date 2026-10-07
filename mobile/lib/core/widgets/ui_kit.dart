@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:stock_management/core/theme/app_colors.dart';
+import 'package:stock_management/core/theme/app_tokens.dart';
 import 'package:stock_management/core/utils/user_message.dart';
 
 class AppCard extends StatelessWidget {
@@ -140,30 +142,33 @@ class _SearchFieldState extends State<SearchField> {
   }
 }
 
+/// Uniform status pill (stock faible, rupture, annulé...).
 class StatusChip extends StatelessWidget {
   const StatusChip({
     super.key,
     required this.label,
     required this.color,
+    this.containerColor,
   });
 
   final String label;
   final Color color;
+  final Color? containerColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppSpacing.xxs),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
+        color: containerColor ?? color.withValues(alpha: 0.12),
+        borderRadius: AppRadius.pillAll,
       ),
       child: Text(
         label,
         style: TextStyle(
           color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
+          fontSize: AppTextSize.badge,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -177,14 +182,33 @@ class StockStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     switch (status) {
       case 'OUT':
-        return const StatusChip(label: 'Rupture', color: Color(0xFFDC2626));
+        return StatusChip(label: 'Rupture', color: colors.danger, containerColor: colors.dangerContainer);
       case 'LOW':
-        return const StatusChip(label: 'Stock faible', color: Color(0xFFEA580C));
+        return StatusChip(label: 'Stock faible', color: colors.warning, containerColor: colors.warningContainer);
       default:
-        return const StatusChip(label: 'Normal', color: Color(0xFF15803D));
+        return StatusChip(label: 'Normal', color: colors.success, containerColor: colors.successContainer);
     }
+  }
+}
+
+/// Confirmed / cancelled badge for purchases (masculine) and sales (feminine).
+class DocumentStatusChip extends StatelessWidget {
+  const DocumentStatusChip({super.key, required this.status, this.feminine = false});
+
+  final String status;
+  final bool feminine;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final suffix = feminine ? 'e' : '';
+    if (status == 'CANCELLED') {
+      return StatusChip(label: 'Annulé$suffix', color: colors.neutral, containerColor: colors.neutralContainer);
+    }
+    return StatusChip(label: 'Confirmé$suffix', color: colors.success, containerColor: colors.successContainer);
   }
 }
 

@@ -178,12 +178,7 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                                 Expanded(
                                   child: Text(sale.referenceNumber, style: Theme.of(context).textTheme.titleMedium),
                                 ),
-                                StatusChip(
-                                  label: sale.status == 'CANCELLED' ? 'Annulée' : 'Confirmée',
-                                  color: sale.status == 'CANCELLED'
-                                      ? Theme.of(context).colorScheme.error
-                                      : const Color(0xFF15803D),
-                                ),
+                                DocumentStatusChip(status: sale.status, feminine: true),
                               ],
                             ),
                             Text(sale.customer.name),

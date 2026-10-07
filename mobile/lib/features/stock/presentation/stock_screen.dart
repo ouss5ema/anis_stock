@@ -45,6 +45,10 @@ final stockListProvider = FutureProvider.family<PaginatedResult<Product>, StockQ
       );
 });
 
+/// Stock filter (`all`, `low`, `out`), shared so the dashboard alerts can
+/// open the Stock tab with the matching filter already applied.
+final stockFilterProvider = StateProvider<String>((ref) => 'all');
+
 class StockScreen extends ConsumerStatefulWidget {
   const StockScreen({super.key});
 
@@ -54,16 +58,19 @@ class StockScreen extends ConsumerStatefulWidget {
 
 class _StockScreenState extends ConsumerState<StockScreen> {
   String _search = '';
-  String _filter = 'all';
   String? _categoryId;
   String _sort = 'name';
+
+  String get _filter => ref.watch(stockFilterProvider);
+
+  void _setFilter(String value) => ref.read(stockFilterProvider.notifier).state = value;
 
   StockQuery get _query => StockQuery(search: _search, filter: _filter, categoryId: _categoryId, sort: _sort);
 
   void _reset() {
+    _setFilter('all');
     setState(() {
       _search = '';
-      _filter = 'all';
       _categoryId = null;
       _sort = 'name';
     });
@@ -111,9 +118,9 @@ class _StockScreenState extends ConsumerState<StockScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                FilterChoice(label: 'Tous', selected: _filter == 'all', onSelected: () => setState(() => _filter = 'all')),
-                FilterChoice(label: 'Stock faible', selected: _filter == 'low', onSelected: () => setState(() => _filter = 'low')),
-                FilterChoice(label: 'Rupture', selected: _filter == 'out', onSelected: () => setState(() => _filter = 'out')),
+                FilterChoice(label: 'Tous', selected: _filter == 'all', onSelected: () => _setFilter('all')),
+                FilterChoice(label: 'Stock faible', selected: _filter == 'low', onSelected: () => _setFilter('low')),
+                FilterChoice(label: 'Rupture', selected: _filter == 'out', onSelected: () => _setFilter('out')),
                 FilterChoice(label: 'Trier par nom', selected: _sort == 'name', onSelected: () => setState(() => _sort = 'name')),
                 FilterChoice(label: 'Trier par stock', selected: _sort == 'stock', onSelected: () => setState(() => _sort = 'stock')),
               ],

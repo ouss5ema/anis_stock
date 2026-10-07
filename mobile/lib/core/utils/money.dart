@@ -1,11 +1,14 @@
 import 'package:decimal/decimal.dart';
+import 'package:stock_management/core/utils/number_input.dart';
 
+/// Accepts `,` or `.` and thousands spaces. Invalid input counts as zero.
 Decimal parseMoney(String? raw) {
-  if (raw == null || raw.trim().isEmpty) {
-    return Decimal.zero;
-  }
-  return Decimal.parse(raw.replaceAll(',', '.').trim());
+  return tryParseDecimalInput(raw) ?? Decimal.zero;
 }
+
+/// Editable value for a numeric field: same as [formatDt] without the
+/// thousands spaces, so it stays valid for [DecimalInputFormatter].
+String formatDecimalForInput(String? raw) => formatDt(raw).replaceAll(' ', '');
 
 String formatDt(String? raw, {int scale = 3}) {
   final value = parseMoney(raw);

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:stock_management/core/network/api_exception.dart';
 import 'package:stock_management/core/utils/labels.dart';
 import 'package:stock_management/core/utils/money.dart';
+import 'package:stock_management/core/utils/number_input.dart';
 import 'package:stock_management/core/utils/user_message.dart';
 import 'package:stock_management/core/widgets/document_line_card.dart';
 import 'package:stock_management/core/widgets/pickers.dart';
@@ -46,7 +47,7 @@ class _SaleFormScreenState extends ConsumerState<SaleFormScreen> {
     final product = await pickProduct(context, ref, showSalePrice: true);
     if (product == null) return;
     setState(() {
-      _lines.add(DraftLine(product: product, unitPrice: formatDt(product.salePrice)));
+      _lines.add(DraftLine(product: product, unitPrice: formatDecimalForInput(product.salePrice)));
     });
   }
 
@@ -88,8 +89,8 @@ class _SaleFormScreenState extends ConsumerState<SaleFormScreen> {
             .map(
               (line) => {
                 'productId': line.product.id,
-                'quantity': line.quantity,
-                'unitPrice': line.unitPrice,
+                'quantity': decimalForApi(line.quantity),
+                'unitPrice': decimalForApi(line.unitPrice),
               },
             )
             .toList(),

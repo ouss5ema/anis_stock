@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:stock_management/core/widgets/app_logo.dart';
 import 'package:stock_management/features/auth/providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -61,8 +62,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           padding: const EdgeInsets.all(24),
           children: [
             const SizedBox(height: 24),
-            Icon(Icons.inventory_2_rounded, size: 48, color: colors.primary),
-            const SizedBox(height: 12),
+            const Center(child: AppLogo(size: 88, radius: 20)),
+            const SizedBox(height: 16),
             Text('Connexion', style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 6),
             Text(

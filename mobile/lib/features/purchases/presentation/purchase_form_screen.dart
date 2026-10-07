@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:stock_management/core/network/api_exception.dart';
 import 'package:stock_management/core/utils/money.dart';
+import 'package:stock_management/core/utils/number_input.dart';
 import 'package:stock_management/core/utils/user_message.dart';
 import 'package:stock_management/core/widgets/document_line_card.dart';
 import 'package:stock_management/core/widgets/pickers.dart';
@@ -37,7 +38,7 @@ class _PurchaseFormScreenState extends ConsumerState<PurchaseFormScreen> {
     final product = await pickProduct(context, ref);
     if (product == null) return;
     setState(() {
-      _lines.add(DraftLine(product: product, unitPrice: formatDt(product.purchasePrice)));
+      _lines.add(DraftLine(product: product, unitPrice: formatDecimalForInput(product.purchasePrice)));
     });
   }
 
@@ -75,8 +76,8 @@ class _PurchaseFormScreenState extends ConsumerState<PurchaseFormScreen> {
             .map(
               (line) => {
                 'productId': line.product.id,
-                'quantity': line.quantity,
-                'unitPrice': line.unitPrice,
+                'quantity': decimalForApi(line.quantity),
+                'unitPrice': decimalForApi(line.unitPrice),
               },
             )
             .toList(),

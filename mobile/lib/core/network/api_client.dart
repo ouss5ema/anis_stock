@@ -32,9 +32,16 @@ class ApiClient {
         onError: (error, handler) async {
           final path = error.requestOptions.path;
           final isAuthEndpoint = path.contains('/auth/login') || path.contains('/auth/register');
+          // Only a real 401 ends the session. Network errors, timeouts and 5xx never do.
           if (error.response?.statusCode == 401 && !isAuthEndpoint) {
-            await _tokenStorage.clearToken();
-            onUnauthorized?.call();
+            final sentHeader = error.requestOptions.headers['Authorization'];
+            final currentToken = await _tokenStorage.readToken();
+            // Ignore a late 401 for a token that was already replaced by a new login.
+            final isCurrentToken = sentHeader == null || sentHeader == 'Bearer $currentToken';
+            if (isCurrentToken) {
+              await _tokenStorage.clearSession();
+              onUnauthorized?.call();
+            }
           }
           handler.next(error);
         },
@@ -45,6 +52,8 @@ class ApiClient {
   VoidCallback? onUnauthorized;
   final TokenStorage _tokenStorage;
   late final Dio _dio;
+
+  String get baseUrl => _dio.options.baseUrl;
 
   Future<T> get<T>(
     String path, {

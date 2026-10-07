@@ -202,6 +202,61 @@ class TopProduct {
   }
 }
 
+/// Confirmed sales and purchases totals over a period.
+class PeriodTotals {
+  const PeriodTotals({
+    required this.saleAmount,
+    required this.saleCount,
+    required this.purchaseAmount,
+    required this.purchaseCount,
+  });
+
+  final String saleAmount;
+  final int saleCount;
+  final String purchaseAmount;
+  final int purchaseCount;
+
+  factory PeriodTotals.fromJson(Map<String, dynamic> json) {
+    return PeriodTotals(
+      saleAmount: json['saleAmount']?.toString() ?? '0',
+      saleCount: (json['saleCount'] as num?)?.toInt() ?? 0,
+      purchaseAmount: json['purchaseAmount']?.toString() ?? '0',
+      purchaseCount: (json['purchaseCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// One bucket of the dashboard series: a day (`2026-10-07`) or an hour
+/// (`2026-10-07T14:00`) in Africa/Tunis time.
+class DashboardPoint {
+  const DashboardPoint({
+    required this.bucket,
+    required this.saleAmount,
+    required this.purchaseAmount,
+    this.saleCount = 0,
+    this.purchaseCount = 0,
+  });
+
+  final String bucket;
+  final String saleAmount;
+  final String purchaseAmount;
+  final int saleCount;
+  final int purchaseCount;
+
+  /// Local wall-clock time of the bucket start (no time zone conversion).
+  DateTime get start => DateTime.parse(bucket.length == 10 ? bucket : '$bucket:00');
+
+  factory DashboardPoint.fromJson(Map<String, dynamic> json) {
+    return DashboardPoint(
+      bucket: json['date'] as String? ?? '',
+      saleAmount: json['saleAmount']?.toString() ?? '0',
+      purchaseAmount: json['purchaseAmount']?.toString() ?? '0',
+      saleCount: (json['saleCount'] as num?)?.toInt() ?? 0,
+      purchaseCount: (json['purchaseCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class DashboardSnapshot {
   const DashboardSnapshot({
     required this.purchaseCount,
@@ -218,7 +273,27 @@ class DashboardSnapshot {
     this.outOfStockProducts = const [],
     this.lowStockProducts = const [],
     this.topProducts = const [],
+    this.previous,
+    this.series = const [],
+    this.seriesGranularity = 'day',
   });
+
+  /// Totals of the selected period. The API sends them under `today`
+  /// for every period; mapped here to [current].
+  PeriodTotals get current => PeriodTotals(
+        saleAmount: saleAmount,
+        saleCount: saleCount,
+        purchaseAmount: purchaseAmount,
+        purchaseCount: purchaseCount,
+      );
+
+  /// Same totals for the previous period of equal length. Null when the
+  /// backend does not provide it (older API).
+  final PeriodTotals? previous;
+  final List<DashboardPoint> series;
+
+  /// `'day'` or `'hour'`.
+  final String seriesGranularity;
 
   final int purchaseCount;
   final int saleCount;
@@ -271,6 +346,14 @@ class DashboardSnapshot {
           .whereType<Map<String, dynamic>>()
           .map(TopProduct.fromJson)
           .toList(),
+      previous: json['previous'] is Map<String, dynamic>
+          ? PeriodTotals.fromJson(json['previous'] as Map<String, dynamic>)
+          : null,
+      series: (json['series'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(DashboardPoint.fromJson)
+          .toList(),
+      seriesGranularity: json['seriesGranularity'] as String? ?? 'day',
     );
   }
 }

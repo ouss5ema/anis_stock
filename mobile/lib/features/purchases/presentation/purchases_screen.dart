@@ -182,12 +182,7 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
                                     style: Theme.of(context).textTheme.titleMedium,
                                   ),
                                 ),
-                                StatusChip(
-                                  label: purchase.status == 'CANCELLED' ? 'Annulé' : 'Confirmé',
-                                  color: purchase.status == 'CANCELLED'
-                                      ? Theme.of(context).colorScheme.error
-                                      : const Color(0xFF15803D),
-                                ),
+                                DocumentStatusChip(status: purchase.status),
                               ],
                             ),
                             Text(purchase.supplier.name),

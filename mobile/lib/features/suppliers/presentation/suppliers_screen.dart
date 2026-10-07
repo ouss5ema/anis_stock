@@ -248,7 +248,12 @@ class _SupplierFormScreenState extends ConsumerState<SupplierFormScreen> {
             decoration: const InputDecoration(labelText: 'Type'),
           ),
           const SizedBox(height: 12),
-          TextField(controller: _phone, decoration: const InputDecoration(labelText: 'Téléphone')),
+          TextField(
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(labelText: 'Téléphone'),
+          ),
           const SizedBox(height: 12),
           TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email')),
           const SizedBox(height: 12),

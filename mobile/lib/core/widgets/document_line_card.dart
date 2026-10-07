@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:stock_management/core/utils/labels.dart';
 import 'package:stock_management/core/utils/money.dart';
+import 'package:stock_management/core/widgets/numeric_field.dart';
 import 'package:stock_management/core/widgets/ui_kit.dart';
 import 'package:stock_management/data/models/product.dart';
 
@@ -70,19 +71,18 @@ class DocumentLineCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: TextFormField(
+                child: DecimalTextField(
                   initialValue: line.quantity,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Qté'),
+                  labelText: 'Qté',
                   onChanged: onQuantityChanged,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: TextFormField(
+                child: DecimalTextField(
                   initialValue: line.unitPrice,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Prix'),
+                  labelText: 'Prix',
+                  textInputAction: TextInputAction.done,
                   onChanged: onPriceChanged,
                 ),
               ),
