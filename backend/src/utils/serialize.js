@@ -82,6 +82,10 @@ function serializeProduct(product) {
         : undefined,
     stockStatus: getStockStatus(product.currentStock, product.minimumStock),
     isActive: product.isActive,
+    // Inactive products are archived, including legacy ones without archivedAt.
+    isArchived: product.isActive === undefined ? undefined : !product.isActive,
+    archivedAt: product.archivedAt ?? null,
+    archivedBy: product.archivedBy ?? undefined,
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
     suppliers: product.suppliers
@@ -200,6 +204,8 @@ function serializePurchase(purchase) {
     status: purchase.status,
     cancelledAt: purchase.cancelledAt,
     cancelReason: purchase.cancelReason,
+    cancelledById: purchase.cancelledById ?? null,
+    cancelledBy: purchase.cancelledBy ?? undefined,
     createdAt: purchase.createdAt,
     updatedAt: purchase.updatedAt,
     itemCount: purchase._count?.items ?? purchase.items?.length,
@@ -247,6 +253,8 @@ function serializeSale(sale) {
     status: sale.status,
     cancelledAt: sale.cancelledAt,
     cancelReason: sale.cancelReason,
+    cancelledById: sale.cancelledById ?? null,
+    cancelledBy: sale.cancelledBy ?? undefined,
     createdAt: sale.createdAt,
     updatedAt: sale.updatedAt,
     itemCount: sale._count?.items ?? sale.items?.length,

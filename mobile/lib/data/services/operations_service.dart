@@ -49,11 +49,19 @@ class PurchaseService {
     );
   }
 
-  Future<Purchase> cancel(String id, {String? reason}) {
+  /// ADMIN only. The reason (3 to 300 characters) is mandatory.
+  Future<Purchase> cancel(String id, {required String reason}) {
     return _apiClient.delete(
       ApiEndpoints.purchase(id),
-      body: {'reason': ?reason},
+      body: {'reason': reason},
       parser: (data) => Purchase.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  Future<CancelPreview> cancelPreview(String id) {
+    return _apiClient.get(
+      ApiEndpoints.purchaseCancelPreview(id),
+      parser: (data) => CancelPreview.fromJson(data as Map<String, dynamic>),
     );
   }
 }
@@ -104,11 +112,19 @@ class SaleService {
     );
   }
 
-  Future<Sale> cancel(String id, {String? reason}) {
+  /// ADMIN only. The reason (3 to 300 characters) is mandatory.
+  Future<Sale> cancel(String id, {required String reason}) {
     return _apiClient.delete(
       ApiEndpoints.sale(id),
-      body: {'reason': ?reason},
+      body: {'reason': reason},
       parser: (data) => Sale.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  Future<CancelPreview> cancelPreview(String id) {
+    return _apiClient.get(
+      ApiEndpoints.saleCancelPreview(id),
+      parser: (data) => CancelPreview.fromJson(data as Map<String, dynamic>),
     );
   }
 }

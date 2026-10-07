@@ -4,6 +4,7 @@ const { serializeCustomer } = require('../utils/serialize');
 const { paginationMeta } = require('../utils/pagination');
 const decimal = require('../utils/decimal');
 const customerRepository = require('../repositories/customer.repository');
+const audit = require('./audit.service');
 
 function normalizeEmail(email) {
   if (email === '' || email === undefined) {
@@ -97,13 +98,23 @@ async function updateCustomer(id, payload) {
   return serializeCustomer(updated);
 }
 
-async function deleteCustomer(id) {
+/** Unchanged behavior (deactivation, never a physical delete) + audit entry. */
+async function deleteCustomer(id, userId, reason) {
   const customer = await customerRepository.findById(id);
   if (!customer) {
     throw ApiError.notFound('Customer not found');
   }
 
   const updated = await customerRepository.softDelete(id);
+  await audit.record(null, {
+    action: 'CUSTOMER_DELETED',
+    entityType: 'CUSTOMER',
+    entityId: id,
+    entityLabel: customer.name,
+    reason,
+    userId,
+    metadata: { mode: 'DEACTIVATED' },
+  });
   return serializeCustomer(updated);
 }
 

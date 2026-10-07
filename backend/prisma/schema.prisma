@@ -55,18 +55,56 @@ enum DocumentStatus {
   CANCELLED
 }
 
+enum AuditAction {
+  SALE_CANCELLED
+  SALE_UPDATED
+  PURCHASE_CANCELLED
+  PURCHASE_UPDATED
+  PRODUCT_ARCHIVED
+  PRODUCT_RESTORED
+  PRODUCT_DELETED
+  PRODUCT_STATUS_CHANGED
+  CATEGORY_DELETED
+  CATEGORY_PRODUCTS_REASSIGNED
+  CUSTOMER_DELETED
+  SUPPLIER_DELETED
+}
+
 model User {
-  id             String          @id @default(uuid())
-  name           String
-  email          String          @unique
-  passwordHash   String
-  role           UserRole        @default(USER)
-  isActive       Boolean         @default(true)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  stockMovements StockMovement[]
+  id                 String          @id @default(uuid())
+  name               String
+  email              String          @unique
+  passwordHash       String
+  role               UserRole        @default(USER)
+  isActive           Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  stockMovements     StockMovement[]
+  cancelledSales     Sale[]          @relation("SaleCancelledBy")
+  cancelledPurchases Purchase[]      @relation("PurchaseCancelledBy")
+  archivedProducts   Product[]       @relation("ProductArchivedBy")
+  auditLogs          AuditLog[]
 
   @@map("users")
+}
+
+/// Journal des actions sensibles (annulations, archivages, suppressions...).
+/// entityId sans clé étrangère : l'entité peut avoir été supprimée.
+model AuditLog {
+  id          String      @id @default(uuid())
+  action      AuditAction
+  entityType  String
+  entityId    String
+  entityLabel String?
+  reason      String?
+  metadata    Json?
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime    @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 
 model Category {
@@ -94,6 +132,9 @@ model Product {
   currentStock   Decimal           @default(0) @db.Decimal(12, 3)
   minimumStock   Decimal           @default(0) @db.Decimal(12, 3)
   isActive       Boolean           @default(true)
+  archivedAt     DateTime?
+  archivedById   String?
+  archivedBy     User?             @relation("ProductArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   suppliers      ProductSupplier[]
@@ -173,6 +214,8 @@ model Purchase {
   status          DocumentStatus @default(CONFIRMED)
   cancelledAt     DateTime?
   cancelReason    String?
+  cancelledById   String?
+  cancelledBy     User?          @relation("PurchaseCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   items           PurchaseItem[]
@@ -209,6 +252,8 @@ model Sale {
   status          DocumentStatus @default(CONFIRMED)
   cancelledAt     DateTime?
   cancelReason    String?
+  cancelledById   String?
+  cancelledBy     User?          @relation("SaleCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   items           SaleItem[]

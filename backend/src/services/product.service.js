@@ -1,5 +1,9 @@
 const { prisma } = require('../config/prisma');
 const { ApiError } = require('../utils/ApiError');
+const { ErrorCodes } = require('../utils/errorCodes');
+const decimal = require('../utils/decimal');
+const audit = require('./audit.service');
+const stockService = require('./stock.service');
 const { serializeProduct, serializePurchase, serializeSale, serializeStockMovement } = require('../utils/serialize');
 const { paginationMeta } = require('../utils/pagination');
 const productRepository = require('../repositories/product.repository');
@@ -25,13 +29,14 @@ async function assertSuppliersExist(supplierIds = []) {
 }
 
 async function listProducts(query) {
-  const { page, pageSize, search, includeInactive, categoryId, lowStock, outOfStock } = query;
+  const { page, pageSize, search, includeInactive, archived, categoryId, lowStock, outOfStock } = query;
   const skip = (page - 1) * pageSize;
   const { items, total } = await productRepository.findMany({
     skip,
     take: pageSize,
     search,
     includeInactive,
+    archived,
     categoryId,
     lowStock,
     outOfStock,
@@ -130,10 +135,19 @@ async function createProduct(payload) {
   return serializeProduct(product);
 }
 
-async function updateProduct(id, payload) {
+async function updateProduct(id, payload, actor = {}) {
   const product = await productRepository.findById(id);
   if (!product) {
     throw ApiError.notFound('Product not found');
+  }
+
+  const statusChanges =
+    Object.prototype.hasOwnProperty.call(payload, 'isActive') && payload.isActive !== product.isActive;
+  if (statusChanges) {
+    if (actor.role !== 'ADMIN') {
+      throw ApiError.forbidden('Seul un administrateur peut archiver ou réactiver un produit');
+    }
+    return changeProductStatus(id, payload, actor);
   }
 
   if (payload.categoryId) {
@@ -162,14 +176,125 @@ async function updateProduct(id, payload) {
   return serializeProduct(updated);
 }
 
-async function deleteProduct(id) {
+function archiveData(isActive, userId) {
+  return isActive
+    ? { isActive: true, archivedAt: null, archivedById: null }
+    : { isActive: false, archivedAt: new Date(), archivedById: userId ?? null };
+}
+
+/** `isActive` toggled from the product form (ADMIN): same as archive/restore, audited. */
+async function changeProductStatus(id, payload, actor) {
+  const { supplierIds, isActive, ...data } = payload;
+  if (supplierIds) {
+    await assertSuppliersExist(supplierIds);
+    await productRepository.replaceSuppliers(id, supplierIds);
+  }
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await productRepository.update(id, { ...data, ...archiveData(isActive, actor.id) }, tx);
+    await audit.record(tx, {
+      action: 'PRODUCT_STATUS_CHANGED',
+      entityType: 'PRODUCT',
+      entityId: id,
+      entityLabel: result.name,
+      userId: actor.id,
+      metadata: { isActive, currentStock: decimal.toString(result.currentStock) },
+    });
+    return result;
+  });
+  return serializeProduct(updated);
+}
+
+/** Indicative only: deleteProduct decides under lock. */
+async function getDeletePreview(id) {
   const product = await productRepository.findById(id);
   if (!product) {
-    throw ApiError.notFound('Product not found');
+    throw ApiError.notFound('Produit introuvable');
+  }
+  const history = await productRepository.countHistory(id);
+  const stock = decimal.toDecimal(product.currentStock);
+  return {
+    productId: product.id,
+    productName: product.name,
+    isArchived: !product.isActive,
+    mode: history.total === 0 && stock.isZero() ? 'DELETE' : 'ARCHIVE',
+    currentStock: decimal.toString(stock),
+    hasStock: !stock.isZero(),
+    history,
+  };
+}
+
+/**
+ * Real deletion only when the product has no movement, no document line and
+ * a zero stock. Otherwise it is archived (stock untouched, history kept).
+ */
+async function deleteProduct(id, userId, reason) {
+  const exists = await productRepository.findById(id);
+  if (!exists) {
+    throw ApiError.notFound('Produit introuvable');
   }
 
-  const updated = await productRepository.softDelete(id);
-  return serializeProduct(updated);
+  return prisma.$transaction(async (tx) => {
+    // Same row lock as applyMovement: no movement can slip in meanwhile.
+    await stockService.lockProduct(tx, id);
+    const product = await productRepository.findById(id, tx);
+    const history = await productRepository.countHistory(id, tx);
+    const stock = decimal.toDecimal(product.currentStock);
+
+    if (history.total === 0 && stock.isZero()) {
+      await tx.product.delete({ where: { id } });
+      await audit.record(tx, {
+        action: 'PRODUCT_DELETED',
+        entityType: 'PRODUCT',
+        entityId: id,
+        entityLabel: product.name,
+        reason,
+        userId,
+        metadata: { sku: product.sku, categoryId: product.categoryId },
+      });
+      return { ...serializeProduct(product), deletionMode: 'DELETED' };
+    }
+
+    if (!product.isActive) {
+      throw ApiError.conflict('Ce produit est déjà archivé', [], ErrorCodes.ALREADY_ARCHIVED);
+    }
+
+    const archived = await productRepository.update(id, archiveData(false, userId), tx);
+    await audit.record(tx, {
+      action: 'PRODUCT_ARCHIVED',
+      entityType: 'PRODUCT',
+      entityId: id,
+      entityLabel: product.name,
+      reason,
+      userId,
+      metadata: { currentStock: decimal.toString(stock), history },
+    });
+    return { ...serializeProduct(archived), deletionMode: 'ARCHIVED' };
+  });
+}
+
+async function restoreProduct(id, userId, reason) {
+  const product = await productRepository.findById(id);
+  if (!product) {
+    throw ApiError.notFound('Produit introuvable');
+  }
+  if (product.isActive) {
+    throw ApiError.conflict('Ce produit n’est pas archivé', [], ErrorCodes.NOT_ARCHIVED);
+  }
+
+  const restored = await prisma.$transaction(async (tx) => {
+    const result = await productRepository.update(id, archiveData(true), tx);
+    await audit.record(tx, {
+      action: 'PRODUCT_RESTORED',
+      entityType: 'PRODUCT',
+      entityId: id,
+      entityLabel: product.name,
+      reason,
+      userId,
+      metadata: { currentStock: decimal.toString(result.currentStock) },
+    });
+    return result;
+  });
+  return serializeProduct(restored);
 }
 
 module.exports = {
@@ -179,4 +304,6 @@ module.exports = {
   createProduct,
   updateProduct,
   deleteProduct,
+  restoreProduct,
+  getDeletePreview,
 };

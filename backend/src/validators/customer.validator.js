@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { paginatedQuery, idParams } = require('./common.validator');
+const { paginatedQuery, idParams, idWithOptionalReason } = require('./common.validator');
 
 const customerTypeEnum = z.enum(['FREESHOP', 'SUPERMARKET', 'SHOP', 'OTHER']);
 
@@ -44,7 +44,7 @@ const listCustomersSchema = paginatedQuery({
 });
 
 const getCustomerSchema = idParams();
-const deleteCustomerSchema = idParams();
+const deleteCustomerSchema = idWithOptionalReason();
 
 module.exports = {
   createCustomerSchema,

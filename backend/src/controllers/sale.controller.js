@@ -29,7 +29,12 @@ const update = asyncHandler(async (req, res) => {
 
 const remove = asyncHandler(async (req, res) => {
   const data = await saleService.cancelSale(req.params.id, req.user.id, req.body?.reason);
-  return success(res, data, 'Sale cancelled');
+  return success(res, data, 'Vente annulée');
 });
 
-module.exports = { list, getById, listItems, create, update, remove };
+const cancelPreview = asyncHandler(async (req, res) => {
+  const data = await saleService.getCancelPreview(req.params.id);
+  return success(res, data);
+});
+
+module.exports = { list, getById, listItems, create, update, remove, cancelPreview };

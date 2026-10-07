@@ -194,6 +194,17 @@ class StockStatusChip extends StatelessWidget {
   }
 }
 
+/// "Archivé" badge for archived products.
+class ArchivedChip extends StatelessWidget {
+  const ArchivedChip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return StatusChip(label: 'Archivé', color: colors.neutral, containerColor: colors.neutralContainer);
+  }
+}
+
 /// Confirmed / cancelled badge for purchases (masculine) and sales (feminine).
 class DocumentStatusChip extends StatelessWidget {
   const DocumentStatusChip({super.key, required this.status, this.feminine = false});

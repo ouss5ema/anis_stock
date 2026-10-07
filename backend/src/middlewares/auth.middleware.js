@@ -28,7 +28,7 @@ function authenticate(req, _res, next) {
 function requireRole(...roles) {
   return (req, _res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      return next(ApiError.forbidden());
+      return next(ApiError.forbidden('Action réservée aux administrateurs'));
     }
     return next();
   };

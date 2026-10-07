@@ -28,6 +28,33 @@ const decimalPositive = z
     message: 'Must be a number greater than 0',
   });
 
+const reasonSchema = z
+  .string({ required_error: 'Le motif est obligatoire', invalid_type_error: 'Le motif est obligatoire' })
+  .trim()
+  .min(3, 'Le motif doit contenir au moins 3 caractères')
+  .max(300, 'Le motif ne peut pas dépasser 300 caractères');
+
+/** `:id` + body `{ reason }` (3 to 300 characters), mandatory. */
+function idWithRequiredReason() {
+  return z
+    .object({
+      body: z.object({ reason: reasonSchema }, { required_error: 'Le motif est obligatoire' }),
+    })
+    .merge(idParams());
+}
+
+/** `:id` + optional body `{ reason }`. */
+function idWithOptionalReason() {
+  return z
+    .object({
+      body: z
+        .object({ reason: reasonSchema.optional() })
+        .optional()
+        .transform((body) => body ?? {}),
+    })
+    .merge(idParams());
+}
+
 function paginatedQuery(extra = {}) {
   return z.object({
     query: paginationQuerySchema.extend(extra),
@@ -47,4 +74,7 @@ module.exports = {
   decimalPositive,
   paginatedQuery,
   idParams,
+  reasonSchema,
+  idWithRequiredReason,
+  idWithOptionalReason,
 };

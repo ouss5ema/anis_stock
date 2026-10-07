@@ -23,7 +23,7 @@ const update = asyncHandler(async (req, res) => {
 });
 
 const remove = asyncHandler(async (req, res) => {
-  const data = await supplierService.deleteSupplier(req.params.id);
+  const data = await supplierService.deleteSupplier(req.params.id, req.user.id, req.body?.reason);
   return success(res, data, 'Supplier deactivated');
 });
 

@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { paginatedQuery, idParams } = require('./common.validator');
+const { paginatedQuery, idParams, idWithOptionalReason, reasonSchema } = require('./common.validator');
 
 const createCategorySchema = z.object({
   body: z.object({
@@ -25,7 +25,16 @@ const updateCategorySchema = z
 
 const listCategoriesSchema = paginatedQuery();
 const getCategorySchema = idParams();
-const deleteCategorySchema = idParams();
+const deleteCategorySchema = idWithOptionalReason();
+
+const reassignCategorySchema = z
+  .object({
+    body: z.object({
+      targetCategoryId: z.string().uuid('Catégorie cible invalide'),
+      reason: reasonSchema.optional(),
+    }),
+  })
+  .merge(idParams());
 
 module.exports = {
   createCategorySchema,
@@ -33,4 +42,5 @@ module.exports = {
   listCategoriesSchema,
   getCategorySchema,
   deleteCategorySchema,
+  reassignCategorySchema,
 };

@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { paginatedQuery, idParams, decimalNonNegative } = require('./common.validator');
+const { paginatedQuery, idParams, decimalNonNegative, idWithOptionalReason } = require('./common.validator');
 
 const productUnitEnum = z.enum(['UNIT', 'PACK', 'CARTON', 'BOX', 'RECHARGE', 'OTHER']);
 
@@ -68,10 +68,15 @@ const listProductsSchema = paginatedQuery({
     .enum(['true', 'false'])
     .optional()
     .transform((value) => value === 'true'),
+  archived: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((value) => value === 'true'),
 });
 
 const getProductSchema = idParams();
-const deleteProductSchema = idParams();
+const deleteProductSchema = idWithOptionalReason();
+const restoreProductSchema = idWithOptionalReason();
 
 module.exports = {
   createProductSchema,
@@ -79,4 +84,5 @@ module.exports = {
   listProductsSchema,
   getProductSchema,
   deleteProductSchema,
+  restoreProductSchema,
 };

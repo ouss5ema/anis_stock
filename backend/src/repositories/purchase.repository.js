@@ -4,6 +4,7 @@ const purchaseInclude = {
   supplier: {
     select: { id: true, name: true, type: true, phone: true },
   },
+  cancelledBy: { select: { id: true, name: true } },
   items: {
     include: {
       product: {

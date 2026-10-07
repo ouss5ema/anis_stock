@@ -12,11 +12,12 @@ import 'package:stock_management/data/models/supplier.dart';
 import 'package:stock_management/data/services/service_providers.dart';
 
 class PurchasesQuery {
-  const PurchasesQuery({this.search = '', this.supplierId, this.status, this.period = 'all'});
+  /// [status]: 'CONFIRMED' (default), 'CANCELLED' or 'ALL'.
+  const PurchasesQuery({this.search = '', this.supplierId, this.status = 'CONFIRMED', this.period = 'all'});
 
   final String search;
   final String? supplierId;
-  final String? status;
+  final String status;
   final String period;
 
   @override
@@ -40,7 +41,7 @@ final purchasesProvider = FutureProvider.family<PaginatedResult<Purchase>, Purch
   return ref.watch(purchaseServiceProvider).list(
         search: query.search,
         supplierId: query.supplierId,
-        status: query.status,
+        status: query.status == 'ALL' ? null : query.status,
         from: dates?['from'],
         to: dates?['to'],
       );
@@ -56,7 +57,7 @@ class PurchasesScreen extends ConsumerStatefulWidget {
 class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
   String _search = '';
   String? _supplierId;
-  String? _status;
+  String _status = 'CONFIRMED';
   String _period = 'all';
   final _dateFormat = DateFormat('dd/MM/yyyy');
 
@@ -67,7 +68,7 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
     setState(() {
       _search = '';
       _supplierId = null;
-      _status = null;
+      _status = 'CONFIRMED';
       _period = 'all';
     });
   }
@@ -83,8 +84,8 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
     final active = [
       if (_search.isNotEmpty) 'Recherche : $_search',
       if (supplierName != null) 'Fournisseur : $supplierName',
-      if (_status == 'CONFIRMED') 'Statut : confirmé',
-      if (_status == 'CANCELLED') 'Statut : annulé',
+      if (_status == 'CANCELLED') 'Statut : annulés',
+      if (_status == 'ALL') 'Statut : tous',
       if (_period == 'today') 'Période : aujourd’hui',
       if (_period == '7d') 'Période : 7 jours',
       if (_period == '30d') 'Période : 30 jours',
@@ -118,8 +119,9 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
                 FilterChoice(label: 'Aujourd’hui', selected: _period == 'today', onSelected: () => setState(() => _period = 'today')),
                 FilterChoice(label: '7 jours', selected: _period == '7d', onSelected: () => setState(() => _period = '7d')),
                 FilterChoice(label: '30 jours', selected: _period == '30d', onSelected: () => setState(() => _period = '30d')),
-                FilterChoice(label: 'Confirmés', selected: _status == 'CONFIRMED', onSelected: () => setState(() => _status = _status == 'CONFIRMED' ? null : 'CONFIRMED')),
-                FilterChoice(label: 'Annulés', selected: _status == 'CANCELLED', onSelected: () => setState(() => _status = _status == 'CANCELLED' ? null : 'CANCELLED')),
+                FilterChoice(label: 'Confirmés', selected: _status == 'CONFIRMED', onSelected: () => setState(() => _status = 'CONFIRMED')),
+                FilterChoice(label: 'Annulés', selected: _status == 'CANCELLED', onSelected: () => setState(() => _status = 'CANCELLED')),
+                FilterChoice(label: 'Tous', selected: _status == 'ALL', onSelected: () => setState(() => _status = 'ALL')),
               ],
             ),
           ),

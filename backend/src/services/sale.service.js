@@ -1,6 +1,8 @@
 const { prisma } = require('../config/prisma');
 const { ApiError } = require('../utils/ApiError');
+const { ErrorCodes } = require('../utils/errorCodes');
 const decimal = require('../utils/decimal');
+const audit = require('./audit.service');
 const { nextReference } = require('../utils/references');
 const { serializeSale, serializeSaleItem } = require('../utils/serialize');
 const { paginationMeta } = require('../utils/pagination');
@@ -82,16 +84,34 @@ async function applySaleItems(tx, saleId, items, userId) {
 }
 
 async function reverseSaleItems(tx, sale, userId, reason) {
+  const results = [];
   for (const item of sortItems(sale.items)) {
-    await stockService.increaseStock(tx, {
-      productId: item.productId,
-      type: 'RETURN_SALE',
-      quantity: item.quantity,
-      referenceType: 'RETURN',
-      referenceId: sale.id,
-      reason,
-      createdById: userId,
-    });
+    results.push(
+      await stockService.increaseStock(tx, {
+        productId: item.productId,
+        type: 'RETURN_SALE',
+        quantity: item.quantity,
+        referenceType: 'RETURN',
+        referenceId: sale.id,
+        reason,
+        createdById: userId,
+      })
+    );
+  }
+  return results;
+}
+
+/**
+ * Locks the sale row for the rest of the transaction and refuses a cancelled
+ * sale. Lock order is always: document row first, then products (sorted).
+ */
+async function lockConfirmedSale(tx, id) {
+  const rows = await tx.$queryRaw`SELECT id, status FROM sales WHERE id = ${id} FOR UPDATE`;
+  if (!rows.length) {
+    throw ApiError.notFound('Vente introuvable');
+  }
+  if (rows[0].status === 'CANCELLED') {
+    throw ApiError.conflict('Impossible de modifier une vente annulée', [], ErrorCodes.DOCUMENT_CANCELLED);
   }
 }
 
@@ -164,19 +184,19 @@ async function createSale(payload, userId) {
 }
 
 async function updateSale(id, payload, userId) {
-  const existing = await saleRepository.findById(id);
-  if (!existing) {
-    throw ApiError.notFound('Sale not found');
+  const found = await saleRepository.findById(id);
+  if (!found) {
+    throw ApiError.notFound('Vente introuvable');
   }
-  if (existing.status === 'CANCELLED') {
-    throw ApiError.conflict('Cannot update a cancelled sale');
+  if (found.status === 'CANCELLED') {
+    throw ApiError.conflict('Impossible de modifier une vente annulée', [], ErrorCodes.DOCUMENT_CANCELLED);
   }
 
   if (payload.customerId) {
     await assertCustomer(payload.customerId);
   }
 
-  if (payload.referenceNumber && payload.referenceNumber !== existing.referenceNumber) {
+  if (payload.referenceNumber && payload.referenceNumber !== found.referenceNumber) {
     const duplicate = await saleRepository.findByReference(payload.referenceNumber);
     if (duplicate) {
       throw ApiError.conflict('A sale with this reference already exists');
@@ -184,10 +204,9 @@ async function updateSale(id, payload, userId) {
   }
 
   const sale = await prisma.$transaction(async (tx) => {
-    const current = await tx.sale.findUnique({ where: { id } });
-    if (!current || current.status === 'CANCELLED') {
-      throw ApiError.conflict('Cannot update a cancelled sale');
-    }
+    // Checked again under lock: a concurrent cancellation wins or waits.
+    await lockConfirmedSale(tx, id);
+    const existing = await saleRepository.findById(id, tx);
 
     if (payload.items) {
       const items = normalizeItems(payload.items);
@@ -221,45 +240,123 @@ async function updateSale(id, payload, userId) {
       });
     }
 
+    const updated = await saleRepository.findById(id, tx);
+    await audit.record(tx, {
+      action: 'SALE_UPDATED',
+      entityType: 'SALE',
+      entityId: id,
+      entityLabel: updated.referenceNumber,
+      userId,
+      metadata: {
+        before: {
+          customerId: existing.customerId,
+          saleDate: existing.saleDate,
+          totalAmount: decimal.toString(existing.totalAmount),
+          lines: audit.describeLines(existing.items),
+        },
+        after: {
+          customerId: updated.customerId,
+          saleDate: updated.saleDate,
+          totalAmount: decimal.toString(updated.totalAmount),
+          lines: audit.describeLines(updated.items),
+        },
+      },
+    });
+    return updated;
+  });
+
+  return serializeSale(sale);
+}
+
+/**
+ * Cancels a sale: one RETURN_SALE movement per line through applyMovement,
+ * all in one transaction. The conditional update on status CONFIRMED is the
+ * concurrency guard: a second concurrent cancellation waits for the row lock,
+ * then matches 0 rows and is refused.
+ */
+async function cancelSale(id, userId, reason) {
+  const sale = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.sale.updateMany({
+      where: { id, status: 'CONFIRMED' },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        cancelReason: reason,
+        cancelledById: userId ?? null,
+      },
+    });
+    if (claimed.count === 0) {
+      const exists = await tx.sale.findUnique({ where: { id }, select: { id: true } });
+      if (!exists) {
+        throw ApiError.notFound('Vente introuvable');
+      }
+      throw ApiError.conflict('Cette vente est déjà annulée', [], ErrorCodes.ALREADY_CANCELLED);
+    }
+
+    // Lines read inside the transaction, after the row is locked.
+    const current = await saleRepository.findById(id, tx);
+    const results = await reverseSaleItems(
+      tx,
+      current,
+      userId,
+      `Annulation de la vente ${current.referenceNumber} : ${reason}`
+    );
+
+    await audit.record(tx, {
+      action: 'SALE_CANCELLED',
+      entityType: 'SALE',
+      entityId: id,
+      entityLabel: current.referenceNumber,
+      reason,
+      userId,
+      metadata: {
+        reference: current.referenceNumber,
+        totalAmount: decimal.toString(current.totalAmount),
+        stock: audit.stockChanges(results),
+      },
+    });
+
     return saleRepository.findById(id, tx);
   });
 
   return serializeSale(sale);
 }
 
-async function cancelSale(id, userId, reason) {
-  const existing = await saleRepository.findById(id);
-  if (!existing) {
-    throw ApiError.notFound('Sale not found');
+/** Indicative only: the cancellation transaction is authoritative. */
+async function getCancelPreview(id) {
+  const sale = await saleRepository.findById(id);
+  if (!sale) {
+    throw ApiError.notFound('Vente introuvable');
   }
-  if (existing.status === 'CANCELLED') {
-    throw ApiError.conflict('Sale is already cancelled');
+  const totals = new Map();
+  for (const item of sale.items) {
+    const entry = totals.get(item.productId) || {
+      productId: item.productId,
+      productName: item.product?.name,
+      unit: item.product?.unit,
+      currentStock: decimal.toDecimal(item.product?.currentStock),
+      quantity: decimal.toDecimal(0),
+    };
+    entry.quantity = entry.quantity.plus(item.quantity);
+    totals.set(item.productId, entry);
   }
-
-  const sale = await prisma.$transaction(async (tx) => {
-    const current = await tx.sale.findUnique({ where: { id } });
-    if (!current || current.status === 'CANCELLED') {
-      throw ApiError.conflict('Sale is already cancelled');
-    }
-
-    await reverseSaleItems(
-      tx,
-      existing,
-      userId,
-      reason || `Annulation de la vente ${existing.referenceNumber}`
-    );
-    await tx.sale.update({
-      where: { id },
-      data: {
-        status: 'CANCELLED',
-        cancelledAt: new Date(),
-        cancelReason: reason || 'Annulation',
-      },
-    });
-    return saleRepository.findById(id, tx);
-  });
-
-  return serializeSale(sale);
+  const lines = [...totals.values()].map((entry) => ({
+    productId: entry.productId,
+    productName: entry.productName,
+    unit: entry.unit,
+    quantity: entry.quantity.toFixed(3),
+    stockBefore: entry.currentStock.toFixed(3),
+    stockAfter: entry.currentStock.plus(entry.quantity).toFixed(3),
+    blocking: false,
+  }));
+  return {
+    id: sale.id,
+    referenceNumber: sale.referenceNumber,
+    status: sale.status,
+    canCancel: sale.status === 'CONFIRMED',
+    blockingReason: sale.status === 'CANCELLED' ? 'Cette vente est déjà annulée' : null,
+    lines,
+  };
 }
 
 module.exports = {
@@ -269,4 +366,5 @@ module.exports = {
   createSale,
   updateSale,
   cancelSale,
+  getCancelPreview,
 };

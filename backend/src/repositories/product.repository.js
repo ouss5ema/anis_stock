@@ -3,6 +3,7 @@ const decimal = require('../utils/decimal');
 
 const productInclude = {
   category: true,
+  archivedBy: { select: { id: true, name: true } },
   suppliers: {
     include: {
       supplier: {
@@ -12,9 +13,15 @@ const productInclude = {
   },
 };
 
-function buildFilters({ search, includeInactive, categoryId }) {
+function activeFilter({ includeInactive, archived }) {
+  // Archived = inactive, including legacy inactive products without archivedAt.
+  if (archived) return { isActive: false };
+  return includeInactive ? {} : { isActive: true };
+}
+
+function buildFilters({ search, includeInactive, archived, categoryId }) {
   return {
-    ...(includeInactive ? {} : { isActive: true }),
+    ...activeFilter({ includeInactive, archived }),
     ...(categoryId ? { categoryId } : {}),
     ...(search
       ? {
@@ -28,8 +35,8 @@ function buildFilters({ search, includeInactive, categoryId }) {
   };
 }
 
-async function findMany({ skip, take, search, includeInactive, categoryId, lowStock, outOfStock }) {
-  const filters = buildFilters({ search, includeInactive, categoryId });
+async function findMany({ skip, take, search, includeInactive, archived, categoryId, lowStock, outOfStock }) {
+  const filters = buildFilters({ search, includeInactive, archived, categoryId });
 
   if (lowStock || outOfStock) {
     const all = await prisma.product.findMany({
@@ -65,11 +72,21 @@ async function findMany({ skip, take, search, includeInactive, categoryId, lowSt
   return { items, total };
 }
 
-async function findById(id) {
-  return prisma.product.findUnique({
+async function findById(id, client = prisma) {
+  return client.product.findUnique({
     where: { id },
     include: productInclude,
   });
+}
+
+/** Movements and document lines referencing the product (its history). */
+async function countHistory(productId, client = prisma) {
+  const [movements, purchaseLines, saleLines] = await Promise.all([
+    client.stockMovement.count({ where: { productId } }),
+    client.purchaseItem.count({ where: { productId } }),
+    client.saleItem.count({ where: { productId } }),
+  ]);
+  return { movements, purchaseLines, saleLines, total: movements + purchaseLines + saleLines };
 }
 
 async function findBySku(sku) {
@@ -83,8 +100,8 @@ async function create(data) {
   });
 }
 
-async function update(id, data) {
-  return prisma.product.update({
+async function update(id, data, client = prisma) {
+  return client.product.update({
     where: { id },
     data,
     include: productInclude,
@@ -131,7 +148,9 @@ module.exports = {
   create,
   update,
   replaceSuppliers,
+  countHistory,
   countPurchaseOrSaleItems,
+  productInclude,
   countByCategory,
   softDelete,
 };

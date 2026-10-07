@@ -1,6 +1,9 @@
 const { prisma } = require('../config/prisma');
 const { ApiError } = require('../utils/ApiError');
+const { ErrorCodes } = require('../utils/errorCodes');
+const { quantityFr } = require('../utils/frenchFormat');
 const decimal = require('../utils/decimal');
+const audit = require('./audit.service');
 const { nextReference } = require('../utils/references');
 const { serializePurchase, serializePurchaseItem } = require('../utils/serialize');
 const { paginationMeta } = require('../utils/pagination');
@@ -29,16 +32,64 @@ function sortItems(items) {
 }
 
 async function reversePurchaseItems(tx, purchase, userId, reason) {
+  const results = [];
   for (const item of sortItems(purchase.items)) {
-    await stockService.decreaseStock(tx, {
+    results.push(
+      await stockService.decreaseStock(tx, {
+        productId: item.productId,
+        type: 'RETURN_PURCHASE',
+        quantity: item.quantity,
+        referenceType: 'RETURN',
+        referenceId: purchase.id,
+        reason,
+        createdById: userId,
+      })
+    );
+  }
+  return results;
+}
+
+/** Quantity to remove per product (a product can appear on several lines). */
+function quantitiesByProduct(items) {
+  const totals = new Map();
+  for (const item of items) {
+    const entry = totals.get(item.productId) || {
       productId: item.productId,
-      type: 'RETURN_PURCHASE',
-      quantity: item.quantity,
-      referenceType: 'RETURN',
-      referenceId: purchase.id,
-      reason,
-      createdById: userId,
-    });
+      productName: item.product?.name,
+      unit: item.product?.unit,
+      quantity: decimal.toDecimal(0),
+    };
+    entry.quantity = entry.quantity.plus(item.quantity);
+    totals.set(item.productId, entry);
+  }
+  return [...totals.values()];
+}
+
+/** Products whose current stock is lower than the quantity to remove. */
+function findShortages(required, stockById) {
+  return required
+    .map((entry) => ({ ...entry, available: decimal.toDecimal(stockById.get(entry.productId)) }))
+    .filter((entry) => entry.available.lessThan(entry.quantity));
+}
+
+function shortageMessage(reference, shortages) {
+  const details = shortages
+    .map(
+      (entry) =>
+        `le stock actuel de « ${entry.productName} » est de ${quantityFr(entry.available)}, il faudrait en retirer ${quantityFr(entry.quantity)}`
+    )
+    .join(' ; ');
+  return `Impossible d'annuler l'achat ${reference} : ${details} (marchandise déjà vendue).`;
+}
+
+/** Locks the purchase row; refuses a cancelled purchase. Document first, then products. */
+async function lockConfirmedPurchase(tx, id) {
+  const rows = await tx.$queryRaw`SELECT id, status FROM purchases WHERE id = ${id} FOR UPDATE`;
+  if (!rows.length) {
+    throw ApiError.notFound('Achat introuvable');
+  }
+  if (rows[0].status === 'CANCELLED') {
+    throw ApiError.conflict('Impossible de modifier un achat annulé', [], ErrorCodes.DOCUMENT_CANCELLED);
   }
 }
 
@@ -176,19 +227,19 @@ async function createPurchase(payload, userId) {
 }
 
 async function updatePurchase(id, payload, userId) {
-  const existing = await purchaseRepository.findById(id);
-  if (!existing) {
-    throw ApiError.notFound('Purchase not found');
+  const found = await purchaseRepository.findById(id);
+  if (!found) {
+    throw ApiError.notFound('Achat introuvable');
   }
-  if (existing.status === 'CANCELLED') {
-    throw ApiError.conflict('Cannot update a cancelled purchase');
+  if (found.status === 'CANCELLED') {
+    throw ApiError.conflict('Impossible de modifier un achat annulé', [], ErrorCodes.DOCUMENT_CANCELLED);
   }
 
   if (payload.supplierId) {
     await assertSupplier(payload.supplierId);
   }
 
-  if (payload.referenceNumber && payload.referenceNumber !== existing.referenceNumber) {
+  if (payload.referenceNumber && payload.referenceNumber !== found.referenceNumber) {
     const duplicate = await purchaseRepository.findByReference(payload.referenceNumber);
     if (duplicate) {
       throw ApiError.conflict('A purchase with this reference already exists');
@@ -196,10 +247,9 @@ async function updatePurchase(id, payload, userId) {
   }
 
   const purchase = await prisma.$transaction(async (tx) => {
-    const current = await tx.purchase.findUnique({ where: { id } });
-    if (!current || current.status === 'CANCELLED') {
-      throw ApiError.conflict('Cannot update a cancelled purchase');
-    }
+    // Checked again under lock: a concurrent cancellation wins or waits.
+    await lockConfirmedPurchase(tx, id);
+    const existing = await purchaseRepository.findById(id, tx);
 
     if (payload.items) {
       const items = normalizeItems(payload.items);
@@ -268,45 +318,97 @@ async function updatePurchase(id, payload, userId) {
       });
     }
 
-    return purchaseRepository.findById(id, tx);
+    const updated = await purchaseRepository.findById(id, tx);
+    await audit.record(tx, {
+      action: 'PURCHASE_UPDATED',
+      entityType: 'PURCHASE',
+      entityId: id,
+      entityLabel: updated.referenceNumber,
+      userId,
+      metadata: {
+        before: {
+          supplierId: existing.supplierId,
+          purchaseDate: existing.purchaseDate,
+          totalAmount: decimal.toString(existing.totalAmount),
+          lines: audit.describeLines(existing.items),
+        },
+        after: {
+          supplierId: updated.supplierId,
+          purchaseDate: updated.purchaseDate,
+          totalAmount: decimal.toString(updated.totalAmount),
+          lines: audit.describeLines(updated.items),
+        },
+      },
+    });
+    return updated;
   });
 
   return serializePurchase(purchase);
 }
 
+/**
+ * Cancels a purchase with RETURN_PURCHASE movements through applyMovement.
+ * Refused, with full rollback, if a product no longer has enough stock
+ * (goods already sold). Same concurrency guard as sales.
+ */
 async function cancelPurchase(id, userId, reason) {
-  const existing = await purchaseRepository.findById(id);
-  if (!existing) {
-    throw ApiError.notFound('Purchase not found');
-  }
-  if (existing.status === 'CANCELLED') {
-    throw ApiError.conflict('Purchase is already cancelled');
-  }
-
   const purchase = await prisma.$transaction(async (tx) => {
-    const current = await tx.purchase.findUnique({ where: { id } });
-    if (!current || current.status === 'CANCELLED') {
-      throw ApiError.conflict('Purchase is already cancelled');
-    }
-
-    await stockService.lockProductsInOrder(
-      tx,
-      stockService.uniqueSortedProductIds(existing.items)
-    );
-
-    await reversePurchaseItems(
-      tx,
-      existing,
-      userId,
-      reason || `Annulation de l'achat ${existing.referenceNumber}`
-    );
-
-    await tx.purchase.update({
-      where: { id },
+    const claimed = await tx.purchase.updateMany({
+      where: { id, status: 'CONFIRMED' },
       data: {
         status: 'CANCELLED',
         cancelledAt: new Date(),
-        cancelReason: reason || 'Annulation',
+        cancelReason: reason,
+        cancelledById: userId ?? null,
+      },
+    });
+    if (claimed.count === 0) {
+      const exists = await tx.purchase.findUnique({ where: { id }, select: { id: true } });
+      if (!exists) {
+        throw ApiError.notFound('Achat introuvable');
+      }
+      throw ApiError.conflict('Cet achat est déjà annulé', [], ErrorCodes.ALREADY_CANCELLED);
+    }
+
+    const current = await purchaseRepository.findById(id, tx);
+    const locked = await stockService.lockProductsInOrder(
+      tx,
+      stockService.uniqueSortedProductIds(current.items)
+    );
+    const stockById = new Map(locked.map((product) => [product.id, product.currentStock]));
+    const shortages = findShortages(quantitiesByProduct(current.items), stockById);
+    if (shortages.length) {
+      // Throwing rolls back the status change above as well.
+      throw ApiError.conflict(
+        shortageMessage(current.referenceNumber, shortages),
+        shortages.map((entry) => ({
+          productId: entry.productId,
+          productName: entry.productName,
+          available: entry.available.toFixed(3),
+          required: entry.quantity.toFixed(3),
+        })),
+        ErrorCodes.INSUFFICIENT_STOCK
+      );
+    }
+
+    const results = await reversePurchaseItems(
+      tx,
+      current,
+      userId,
+      `Annulation de l'achat ${current.referenceNumber} : ${reason}`
+    );
+
+    await audit.record(tx, {
+      action: 'PURCHASE_CANCELLED',
+      entityType: 'PURCHASE',
+      entityId: id,
+      entityLabel: current.referenceNumber,
+      reason,
+      userId,
+      metadata: {
+        reference: current.referenceNumber,
+        totalAmount: decimal.toString(current.totalAmount),
+        stock: audit.stockChanges(results),
       },
     });
 
@@ -316,6 +418,47 @@ async function cancelPurchase(id, userId, reason) {
   return serializePurchase(purchase);
 }
 
+/** Indicative only: the cancellation transaction is authoritative. */
+async function getCancelPreview(id) {
+  const purchase = await purchaseRepository.findById(id);
+  if (!purchase) {
+    throw ApiError.notFound('Achat introuvable');
+  }
+  const required = quantitiesByProduct(purchase.items);
+  const stockById = new Map(purchase.items.map((item) => [item.productId, item.product?.currentStock]));
+  const shortages = findShortages(required, stockById);
+  const blockingIds = new Set(shortages.map((entry) => entry.productId));
+
+  const lines = required.map((entry) => {
+    const before = decimal.toDecimal(stockById.get(entry.productId));
+    return {
+      productId: entry.productId,
+      productName: entry.productName,
+      unit: entry.unit,
+      quantity: entry.quantity.toFixed(3),
+      stockBefore: before.toFixed(3),
+      stockAfter: before.minus(entry.quantity).toFixed(3),
+      blocking: blockingIds.has(entry.productId),
+    };
+  });
+
+  let blockingReason = null;
+  if (purchase.status === 'CANCELLED') {
+    blockingReason = 'Cet achat est déjà annulé';
+  } else if (shortages.length) {
+    blockingReason = shortageMessage(purchase.referenceNumber, shortages);
+  }
+
+  return {
+    id: purchase.id,
+    referenceNumber: purchase.referenceNumber,
+    status: purchase.status,
+    canCancel: purchase.status === 'CONFIRMED' && shortages.length === 0,
+    blockingReason,
+    lines,
+  };
+}
+
 module.exports = {
   listPurchases,
   getPurchase,
@@ -323,4 +466,5 @@ module.exports = {
   createPurchase,
   updatePurchase,
   cancelPurchase,
+  getCancelPreview,
 };

@@ -173,3 +173,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   return AuthNotifier(ref);
 });
+
+/// Shows or hides ADMIN actions. Display only: the backend enforces the
+/// role on every sensitive route (403 otherwise).
+final isAdminProvider = Provider<bool>((ref) => ref.watch(authProvider).user?.role == 'ADMIN');

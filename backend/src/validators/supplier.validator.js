@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { paginatedQuery, idParams } = require('./common.validator');
+const { paginatedQuery, idParams, idWithOptionalReason } = require('./common.validator');
 
 const supplierTypeEnum = z.enum(['TABAC', 'TELECOM', 'OTHER']);
 
@@ -48,7 +48,7 @@ const listSuppliersSchema = paginatedQuery({
 });
 
 const getSupplierSchema = idParams();
-const deleteSupplierSchema = idParams();
+const deleteSupplierSchema = idWithOptionalReason();
 
 module.exports = {
   createSupplierSchema,

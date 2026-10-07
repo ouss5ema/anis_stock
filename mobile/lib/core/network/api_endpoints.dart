@@ -14,12 +14,17 @@ class ApiEndpoints {
   static const stockAdjustments = '/stock/adjustments';
 
   static String category(String id) => '$categories/$id';
+  static String categoryReassign(String id) => '$categories/$id/reassign';
   static String product(String id) => '$products/$id';
   static String productHistory(String id) => '$products/$id/history';
+  static String productDeletePreview(String id) => '$products/$id/delete-preview';
+  static String productRestore(String id) => '$products/$id/restore';
   static String supplier(String id) => '$suppliers/$id';
   static String customer(String id) => '$customers/$id';
   static String purchase(String id) => '$purchases/$id';
   static String purchaseItems(String id) => '$purchases/$id/items';
+  static String purchaseCancelPreview(String id) => '$purchases/$id/cancel-preview';
   static String sale(String id) => '$sales/$id';
   static String saleItems(String id) => '$sales/$id/items';
+  static String saleCancelPreview(String id) => '$sales/$id/cancel-preview';
 }

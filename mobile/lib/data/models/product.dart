@@ -21,6 +21,35 @@ class ProductSupplierLink {
   }
 }
 
+/// What `DELETE /products/:id` will do: real deletion (no history, zero
+/// stock) or archiving. Indicative: the backend decides under lock.
+class ProductDeletePreview {
+  const ProductDeletePreview({
+    required this.willDelete,
+    required this.currentStock,
+    required this.hasStock,
+    required this.isArchived,
+    required this.movementCount,
+  });
+
+  final bool willDelete;
+  final String currentStock;
+  final bool hasStock;
+  final bool isArchived;
+  final int movementCount;
+
+  factory ProductDeletePreview.fromJson(Map<String, dynamic> json) {
+    final history = json['history'] as Map<String, dynamic>? ?? const {};
+    return ProductDeletePreview(
+      willDelete: json['mode'] == 'DELETE',
+      currentStock: json['currentStock']?.toString() ?? '0',
+      hasStock: json['hasStock'] as bool? ?? false,
+      isArchived: json['isArchived'] as bool? ?? false,
+      movementCount: (history['movements'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class Product {
   const Product({
     required this.id,
@@ -40,6 +69,8 @@ class Product {
     required this.isActive,
     this.suppliers = const [],
     this.estimatedValue,
+    this.archivedAt,
+    this.archivedByName,
   });
 
   final String id;
@@ -59,6 +90,11 @@ class Product {
   final bool isActive;
   final List<ProductSupplierLink> suppliers;
   final String? estimatedValue;
+  final DateTime? archivedAt;
+  final String? archivedByName;
+
+  /// Inactive = archived (including legacy inactive products without date).
+  bool get isArchived => !isActive;
 
   factory Product.fromJson(Map<String, dynamic> json) {
     final category = json['category'] as Map<String, dynamic>?;
@@ -83,6 +119,8 @@ class Product {
       stockStatus: status,
       isActive: json['isActive'] as bool? ?? true,
       estimatedValue: json['estimatedValue']?.toString(),
+      archivedAt: json['archivedAt'] is String ? DateTime.tryParse(json['archivedAt'] as String) : null,
+      archivedByName: (json['archivedBy'] as Map<String, dynamic>?)?['name'] as String?,
       suppliers: (json['suppliers'] as List<dynamic>? ?? [])
           .whereType<Map<String, dynamic>>()
           .map(ProductSupplierLink.fromJson)

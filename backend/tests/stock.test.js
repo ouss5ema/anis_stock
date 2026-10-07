@@ -215,11 +215,14 @@ describe('stock business rules', () => {
     await assert.rejects(
       () => purchaseService.cancelPurchase(purchase.id, null, 'Test'),
       (error) => {
-        assert.match(error.message, /Insufficient stock/);
+        // Refusal, HTTP status and stable code: not the wording of the message.
+        assert.equal(error.statusCode, 409);
+        assert.equal(error.code, 'INSUFFICIENT_STOCK');
         return true;
       }
     );
     assert.equal(decimal.toString(await currentStock(product.id)), '4.000');
+    assert.equal((await prisma.purchase.findUnique({ where: { id: purchase.id } })).status, 'CONFIRMED');
   });
 
   it('rejects a negative adjustment that would go below zero', async () => {

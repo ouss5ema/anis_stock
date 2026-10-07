@@ -23,8 +23,18 @@ const update = asyncHandler(async (req, res) => {
 });
 
 const remove = asyncHandler(async (req, res) => {
-  const data = await categoryService.deleteCategory(req.params.id);
-  return success(res, data, 'Category deactivated');
+  const data = await categoryService.deleteCategory(req.params.id, req.user.id, req.body?.reason);
+  return success(res, data, 'Catégorie supprimée');
 });
 
-module.exports = { list, getById, create, update, remove };
+const reassign = asyncHandler(async (req, res) => {
+  const data = await categoryService.reassignProducts(
+    req.params.id,
+    req.body.targetCategoryId,
+    req.user.id,
+    req.body.reason
+  );
+  return success(res, data, 'Produits réaffectés');
+});
+
+module.exports = { list, getById, create, update, remove, reassign };

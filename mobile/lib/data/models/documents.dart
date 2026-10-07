@@ -1,5 +1,70 @@
 import 'package:stock_management/data/models/product.dart';
 
+DateTime? _parseDate(Object? value) => value is String ? DateTime.tryParse(value) : null;
+
+/// One product affected by a cancellation, as returned by `cancel-preview`.
+class StockImpactLine {
+  const StockImpactLine({
+    required this.productId,
+    required this.productName,
+    required this.quantity,
+    required this.stockBefore,
+    required this.stockAfter,
+    this.unit,
+    this.blocking = false,
+  });
+
+  final String productId;
+  final String productName;
+  final String quantity;
+  final String stockBefore;
+  final String stockAfter;
+  final String? unit;
+
+  /// Not enough stock to cancel (goods already sold).
+  final bool blocking;
+
+  factory StockImpactLine.fromJson(Map<String, dynamic> json) {
+    return StockImpactLine(
+      productId: json['productId'] as String? ?? '',
+      productName: json['productName'] as String? ?? 'Produit',
+      quantity: json['quantity']?.toString() ?? '0',
+      stockBefore: json['stockBefore']?.toString() ?? '0',
+      stockAfter: json['stockAfter']?.toString() ?? '0',
+      unit: json['unit'] as String?,
+      blocking: json['blocking'] as bool? ?? false,
+    );
+  }
+}
+
+/// Indicative preview of a sale or purchase cancellation. The backend
+/// transaction remains authoritative.
+class CancelPreview {
+  const CancelPreview({
+    required this.referenceNumber,
+    required this.canCancel,
+    required this.lines,
+    this.blockingReason,
+  });
+
+  final String referenceNumber;
+  final bool canCancel;
+  final String? blockingReason;
+  final List<StockImpactLine> lines;
+
+  factory CancelPreview.fromJson(Map<String, dynamic> json) {
+    return CancelPreview(
+      referenceNumber: json['referenceNumber'] as String? ?? '',
+      canCancel: json['canCancel'] as bool? ?? false,
+      blockingReason: json['blockingReason'] as String?,
+      lines: (json['lines'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(StockImpactLine.fromJson)
+          .toList(),
+    );
+  }
+}
+
 class NamedRef {
   const NamedRef({required this.id, required this.name, this.type});
 
@@ -60,6 +125,9 @@ class Purchase {
     this.notes,
     this.itemCount,
     this.items = const [],
+    this.cancelledAt,
+    this.cancelReason,
+    this.cancelledByName,
   });
 
   final String id;
@@ -71,6 +139,11 @@ class Purchase {
   final String? notes;
   final int? itemCount;
   final List<DocumentLine> items;
+  final DateTime? cancelledAt;
+  final String? cancelReason;
+  final String? cancelledByName;
+
+  bool get isCancelled => status == 'CANCELLED';
 
   factory Purchase.fromJson(Map<String, dynamic> json) {
     return Purchase(
@@ -86,6 +159,9 @@ class Purchase {
           .whereType<Map<String, dynamic>>()
           .map(DocumentLine.fromJson)
           .toList(),
+      cancelledAt: _parseDate(json['cancelledAt']),
+      cancelReason: json['cancelReason'] as String?,
+      cancelledByName: (json['cancelledBy'] as Map<String, dynamic>?)?['name'] as String?,
     );
   }
 }
@@ -101,6 +177,9 @@ class Sale {
     this.notes,
     this.itemCount,
     this.items = const [],
+    this.cancelledAt,
+    this.cancelReason,
+    this.cancelledByName,
   });
 
   final String id;
@@ -112,6 +191,11 @@ class Sale {
   final String? notes;
   final int? itemCount;
   final List<DocumentLine> items;
+  final DateTime? cancelledAt;
+  final String? cancelReason;
+  final String? cancelledByName;
+
+  bool get isCancelled => status == 'CANCELLED';
 
   factory Sale.fromJson(Map<String, dynamic> json) {
     return Sale(
@@ -127,6 +211,9 @@ class Sale {
           .whereType<Map<String, dynamic>>()
           .map(DocumentLine.fromJson)
           .toList(),
+      cancelledAt: _parseDate(json['cancelledAt']),
+      cancelReason: json['cancelReason'] as String?,
+      cancelledByName: (json['cancelledBy'] as Map<String, dynamic>?)?['name'] as String?,
     );
   }
 }

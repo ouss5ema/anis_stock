@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:stock_management/core/network/api_exception.dart';
+import 'package:stock_management/core/theme/app_tokens.dart';
 import 'package:stock_management/core/utils/money.dart';
 import 'package:stock_management/core/utils/user_message.dart';
+import 'package:stock_management/core/widgets/document_admin.dart';
 import 'package:stock_management/core/widgets/ui_kit.dart';
 import 'package:stock_management/data/models/documents.dart';
 import 'package:stock_management/core/data_refresh.dart';
 import 'package:stock_management/data/services/service_providers.dart';
+import 'package:stock_management/features/auth/providers/auth_provider.dart';
 
 final saleDetailProvider = FutureProvider.family<Sale, String>((ref, id) {
   return ref.watch(saleServiceProvider).getById(id);
@@ -19,20 +20,53 @@ class SaleDetailScreen extends ConsumerWidget {
 
   final String id;
 
+  Future<void> _cancel(BuildContext context, WidgetRef ref, Sale sale) async {
+    final service = ref.read(saleServiceProvider);
+    final done = await runCancelFlow(
+      context,
+      title: 'Annuler la vente ${sale.referenceNumber} ?',
+      confirmLabel: 'Annuler la vente',
+      documentLabel: 'La vente ${sale.referenceNumber}',
+      loadPreview: () => service.cancelPreview(id),
+      cancel: (reason) => service.cancel(id, reason: reason),
+    );
+    if (done) {
+      ref.invalidate(saleDetailProvider(id));
+      invalidateOperationalData(ref);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(saleDetailProvider(id));
+    final isAdmin = ref.watch(isAdminProvider);
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
 
     return Scaffold(
       appBar: AppBar(title: const Text('Détail vente')),
       body: async.when(
         data: (sale) => ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, AppSpacing.xxl),
           children: [
-            Text(sale.referenceNumber, style: Theme.of(context).textTheme.headlineSmall),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(sale.referenceNumber, style: Theme.of(context).textTheme.headlineSmall),
+                ),
+                DocumentStatusChip(status: sale.status, feminine: true),
+              ],
+            ),
             Text(sale.customer.name),
             Text(dateFormat.format(sale.saleDate.toLocal())),
+            if (sale.isCancelled) ...[
+              const SizedBox(height: 12),
+              CancellationInfoCard(
+                feminine: true,
+                cancelledAt: sale.cancelledAt,
+                reason: sale.cancelReason,
+                byName: sale.cancelledByName,
+              ),
+            ],
             const SizedBox(height: 12),
             ...sale.items.map(
               (item) => Padding(
@@ -45,29 +79,13 @@ class SaleDetailScreen extends ConsumerWidget {
               ),
             ),
             Text('Total ${formatDtLabel(sale.totalAmount)}', style: Theme.of(context).textTheme.titleLarge),
-            if (sale.status == 'CONFIRMED') ...[
-              const SizedBox(height: 20),
-              FilledButton.tonal(
-                onPressed: () async {
-                  final ok = await confirmAction(
-                    context,
-                    title: 'Annuler cette vente ?',
-                    message: 'Le stock sera recrédité et l’historique conservé.',
-                    confirmLabel: 'Annuler la vente',
-                  );
-                  if (!ok) return;
-                  try {
-                    await ref.read(saleServiceProvider).cancel(id, reason: 'Annulation depuis l’application');
-                    ref.invalidate(saleDetailProvider(id));
-                    invalidateOperationalData(ref);
-                    if (context.mounted) context.pop();
-                  } on ApiException catch (error) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(userFacingMessage(error))));
-                    }
-                  }
-                },
-                child: const Text('Annuler la vente'),
+            // ADMIN only (enforced by the backend as well).
+            if (isAdmin && !sale.isCancelled) ...[
+              const SizedBox(height: 24),
+              DangerButton(
+                label: 'Annuler la vente',
+                icon: Icons.block_rounded,
+                onPressed: () => _cancel(context, ref, sale),
               ),
             ],
           ],

@@ -1,4 +1,5 @@
 const { ApiError } = require('../utils/ApiError');
+const { ErrorCodes } = require('../utils/errorCodes');
 const decimal = require('../utils/decimal');
 
 function uniqueSortedProductIds(items) {
@@ -48,8 +49,18 @@ async function applyMovement(tx, {
   const newStock = direction === 'in' ? previousStock.plus(qty) : previousStock.minus(qty);
 
   if (newStock.isNegative()) {
+    // Message kept as-is (parsed by the mobile app); `code` added for clients.
     throw ApiError.badRequest(
-      `Insufficient stock for ${product.name}. Available: ${previousStock.toFixed(3)}, requested: ${qty.toFixed(3)}`
+      `Insufficient stock for ${product.name}. Available: ${previousStock.toFixed(3)}, requested: ${qty.toFixed(3)}`,
+      [
+        {
+          productId,
+          productName: product.name,
+          available: previousStock.toFixed(3),
+          requested: qty.toFixed(3),
+        },
+      ],
+      ErrorCodes.INSUFFICIENT_STOCK
     );
   }
 

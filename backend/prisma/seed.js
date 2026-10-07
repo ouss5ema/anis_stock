@@ -1,6 +1,18 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 
+// Demo data and demo accounts (admin@stock.local / user@stock.local) are for
+// local development only. In production the seed refuses to run, so it can
+// never create a demo account nor touch a real one. The container only runs
+// `prisma migrate deploy` (see Dockerfile), never the seed.
+if (process.env.NODE_ENV === 'production') {
+  console.error(
+    'Seed refusé : NODE_ENV=production. Le seed crée des comptes et des données de démonstration ' +
+      'et ne doit jamais être exécuté en production. Aucune donnée n’a été modifiée.'
+  );
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
 
 async function main() {

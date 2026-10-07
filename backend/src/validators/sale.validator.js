@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { paginatedQuery, idParams, decimalPositive, decimalNonNegative } = require('./common.validator');
+const { paginatedQuery, idParams, decimalPositive, decimalNonNegative, idWithRequiredReason } = require('./common.validator');
 
 const documentItemSchema = z.object({
   productId: z.string().uuid(),
@@ -41,15 +41,8 @@ const updateSaleSchema = z
   .merge(idParams());
 
 const getSaleSchema = idParams();
-const deleteSaleSchema = z
-  .object({
-    body: z
-      .object({
-        reason: z.string().trim().max(300).optional(),
-      })
-      .optional(),
-  })
-  .merge(idParams());
+/** Cancellation: the reason is mandatory (3 to 300 characters). */
+const deleteSaleSchema = idWithRequiredReason();
 
 module.exports = {
   listSalesSchema,

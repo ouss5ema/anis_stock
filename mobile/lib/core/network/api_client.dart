@@ -104,6 +104,8 @@ class ApiClient {
           payload['message']?.toString() ?? 'Request failed',
           statusCode: response.statusCode,
           fieldErrors: _extractErrors(payload['errors']),
+          code: payload['code']?.toString(),
+          details: _extractDetails(payload['errors']),
         );
       }
 
@@ -124,6 +126,8 @@ class ApiClient {
         payload['message']?.toString() ?? 'Request failed',
         statusCode: statusCode,
         fieldErrors: _extractErrors(payload['errors']),
+        code: payload['code']?.toString(),
+        details: _extractDetails(payload['errors']),
       );
     }
 
@@ -142,6 +146,13 @@ class ApiClient {
           statusCode: statusCode,
         );
     }
+  }
+
+  List<Map<String, dynamic>> _extractDetails(dynamic errors) {
+    if (errors is! List) {
+      return const [];
+    }
+    return errors.whereType<Map<String, dynamic>>().toList();
   }
 
   List<String> _extractErrors(dynamic errors) {

@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:stock_management/core/network/api_exception.dart';
+import 'package:stock_management/core/theme/app_tokens.dart';
 import 'package:stock_management/core/utils/money.dart';
 import 'package:stock_management/core/utils/user_message.dart';
+import 'package:stock_management/core/widgets/document_admin.dart';
 import 'package:stock_management/core/widgets/ui_kit.dart';
 import 'package:stock_management/data/models/documents.dart';
 import 'package:stock_management/core/data_refresh.dart';
 import 'package:stock_management/data/services/service_providers.dart';
+import 'package:stock_management/features/auth/providers/auth_provider.dart';
 
 final purchaseDetailProvider = FutureProvider.family<Purchase, String>((ref, id) {
   return ref.watch(purchaseServiceProvider).getById(id);
@@ -19,20 +20,53 @@ class PurchaseDetailScreen extends ConsumerWidget {
 
   final String id;
 
+  Future<void> _cancel(BuildContext context, WidgetRef ref, Purchase purchase) async {
+    final service = ref.read(purchaseServiceProvider);
+    final done = await runCancelFlow(
+      context,
+      title: 'Annuler l’achat ${purchase.referenceNumber} ?',
+      confirmLabel: 'Annuler l’achat',
+      documentLabel: 'L’achat ${purchase.referenceNumber}',
+      loadPreview: () => service.cancelPreview(id),
+      cancel: (reason) => service.cancel(id, reason: reason),
+    );
+    if (done) {
+      ref.invalidate(purchaseDetailProvider(id));
+      invalidateOperationalData(ref);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(purchaseDetailProvider(id));
+    final isAdmin = ref.watch(isAdminProvider);
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
 
     return Scaffold(
       appBar: AppBar(title: const Text('Détail achat')),
       body: async.when(
         data: (purchase) => ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, AppSpacing.xxl),
           children: [
-            Text(purchase.referenceNumber, style: Theme.of(context).textTheme.headlineSmall),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(purchase.referenceNumber, style: Theme.of(context).textTheme.headlineSmall),
+                ),
+                DocumentStatusChip(status: purchase.status),
+              ],
+            ),
             Text(purchase.supplier.name),
             Text(dateFormat.format(purchase.purchaseDate.toLocal())),
+            if (purchase.isCancelled) ...[
+              const SizedBox(height: 12),
+              CancellationInfoCard(
+                feminine: false,
+                cancelledAt: purchase.cancelledAt,
+                reason: purchase.cancelReason,
+                byName: purchase.cancelledByName,
+              ),
+            ],
             const SizedBox(height: 12),
             ...purchase.items.map(
               (item) => Padding(
@@ -45,29 +79,13 @@ class PurchaseDetailScreen extends ConsumerWidget {
               ),
             ),
             Text('Total ${formatDtLabel(purchase.totalAmount)}', style: Theme.of(context).textTheme.titleLarge),
-            if (purchase.status == 'CONFIRMED') ...[
-              const SizedBox(height: 20),
-              FilledButton.tonal(
-                onPressed: () async {
-                  final ok = await confirmAction(
-                    context,
-                    title: 'Annuler cet achat ?',
-                    message: 'Le stock sera diminué et l’historique conservé.',
-                    confirmLabel: 'Annuler l’achat',
-                  );
-                  if (!ok) return;
-                  try {
-                    await ref.read(purchaseServiceProvider).cancel(id, reason: 'Annulation depuis l’application');
-                    ref.invalidate(purchaseDetailProvider(id));
-                    invalidateOperationalData(ref);
-                    if (context.mounted) context.pop();
-                  } on ApiException catch (error) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(userFacingMessage(error))));
-                    }
-                  }
-                },
-                child: const Text('Annuler l’achat'),
+            // ADMIN only (enforced by the backend as well).
+            if (isAdmin && !purchase.isCancelled) ...[
+              const SizedBox(height: 24),
+              DangerButton(
+                label: 'Annuler l’achat',
+                icon: Icons.block_rounded,
+                onPressed: () => _cancel(context, ref, purchase),
               ),
             ],
           ],

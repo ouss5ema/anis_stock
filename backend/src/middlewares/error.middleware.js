@@ -21,6 +21,7 @@ function errorHandler(err, req, res, _next) {
   if (err instanceof ApiError) {
     return res.status(err.statusCode).json({
       success: false,
+      ...(err.code ? { code: err.code } : {}),
       message: err.message,
       errors: err.errors,
     });

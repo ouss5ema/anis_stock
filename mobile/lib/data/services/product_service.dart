@@ -16,6 +16,7 @@ class ProductService {
     int page = 1,
     int pageSize = 100,
     bool includeInactive = false,
+    bool archived = false,
   }) {
     return _apiClient.get(
       ApiEndpoints.products,
@@ -27,6 +28,7 @@ class ProductService {
         if (outOfStock) 'outOfStock': 'true',
         if (categoryId != null && categoryId.isNotEmpty) 'categoryId': categoryId,
         if (includeInactive) 'includeInactive': 'true',
+        if (archived) 'archived': 'true',
       },
       parser: (data) => PaginatedResult.fromJson(
         data as Map<String, dynamic>,
@@ -65,9 +67,28 @@ class ProductService {
     );
   }
 
-  Future<Product> deactivate(String id) {
+  /// ADMIN only. Deletes the product if it has no history and no stock,
+  /// archives it otherwise. Returns true when it was really deleted.
+  Future<bool> delete(String id, {String? reason}) {
     return _apiClient.delete(
       ApiEndpoints.product(id),
+      body: {'reason': ?reason},
+      parser: (data) => (data as Map<String, dynamic>)['deletionMode'] == 'DELETED',
+    );
+  }
+
+  Future<ProductDeletePreview> deletePreview(String id) {
+    return _apiClient.get(
+      ApiEndpoints.productDeletePreview(id),
+      parser: (data) => ProductDeletePreview.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  /// ADMIN only.
+  Future<Product> restore(String id, {String? reason}) {
+    return _apiClient.post(
+      ApiEndpoints.productRestore(id),
+      body: {'reason': ?reason},
       parser: (data) => Product.fromJson(data as Map<String, dynamic>),
     );
   }

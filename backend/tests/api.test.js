@@ -122,7 +122,7 @@ describe('auth and protected API', () => {
 });
 
 describe('product, dashboard and stock queries', () => {
-  it('creates, updates and deactivates a product', async () => {
+  it('creates, updates and deletes a product without history', async () => {
     const category = await prisma.category.findFirst({ where: { isActive: true } });
     assert.ok(category);
 
@@ -142,10 +142,10 @@ describe('product, dashboard and stock queries', () => {
     const updated = await productService.updateProduct(created.id, { name: 'Produit API test 2' });
     assert.equal(updated.name, 'Produit API test 2');
 
-    const deactivated = await productService.deleteProduct(created.id);
-    assert.equal(deactivated.isActive, false);
-
-    await prisma.product.delete({ where: { id: created.id } });
+    // Phase A: no movement, no document line, zero stock -> real deletion.
+    const deleted = await productService.deleteProduct(created.id);
+    assert.equal(deleted.deletionMode, 'DELETED');
+    assert.equal(await prisma.product.findUnique({ where: { id: created.id } }), null);
   });
 
   it('creates products without SKU and keeps SKU unique when present', async () => {

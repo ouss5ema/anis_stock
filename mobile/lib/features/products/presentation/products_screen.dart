@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:stock_management/core/network/api_exception.dart';
+import 'package:stock_management/core/theme/app_colors.dart';
+import 'package:stock_management/core/theme/app_tokens.dart';
+import 'package:stock_management/core/utils/formatters.dart';
 import 'package:stock_management/core/utils/money.dart';
 import 'package:stock_management/core/utils/number_input.dart';
 import 'package:stock_management/core/utils/user_message.dart';
+import 'package:stock_management/core/widgets/danger_action_dialog.dart';
+import 'package:stock_management/core/widgets/document_admin.dart';
 import 'package:stock_management/core/widgets/numeric_field.dart';
 import 'package:stock_management/core/widgets/ui_kit.dart';
 import 'package:stock_management/data/models/category.dart';
 import 'package:stock_management/data/models/paginated_result.dart';
 import 'package:stock_management/data/models/product.dart';
 import 'package:stock_management/data/services/service_providers.dart';
+import 'package:stock_management/features/auth/providers/auth_provider.dart';
 import 'package:stock_management/features/home/presentation/home_screen.dart';
 import 'package:stock_management/features/stock/presentation/movements_screen.dart';
 import 'package:stock_management/features/stock/presentation/stock_screen.dart';
@@ -38,10 +45,12 @@ final productCategoriesProvider = FutureProvider<PaginatedResult<Category>>((ref
   return ref.watch(categoryServiceProvider).list();
 });
 
+/// `filter`: 'all' | 'low' | 'out' list active products; 'archived' lists
+/// archived (inactive) products only.
 final productsListProvider = FutureProvider.family<PaginatedResult<Product>, ProductsQuery>((ref, query) {
   return ref.watch(productServiceProvider).list(
         search: query.search,
-        includeInactive: true,
+        archived: query.filter == 'archived',
         categoryId: query.categoryId,
         lowStock: query.filter == 'low',
         outOfStock: query.filter == 'out',
@@ -84,6 +93,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       if (categoryName != null) 'Catégorie : $categoryName',
       if (_filter == 'low') 'Stock : faible',
       if (_filter == 'out') 'Stock : rupture',
+      if (_filter == 'archived') 'Archivés',
     ];
 
     return Scaffold(
@@ -112,6 +122,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 FilterChoice(label: 'Tous', selected: _filter == 'all', onSelected: () => setState(() => _filter = 'all')),
                 FilterChoice(label: 'Stock faible', selected: _filter == 'low', onSelected: () => setState(() => _filter = 'low')),
                 FilterChoice(label: 'Rupture', selected: _filter == 'out', onSelected: () => setState(() => _filter = 'out')),
+                FilterChoice(label: 'Archivés', selected: _filter == 'archived', onSelected: () => setState(() => _filter = 'archived')),
               ],
             ),
           ),
@@ -174,7 +185,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 Expanded(
                                   child: Text(product.name, style: Theme.of(context).textTheme.titleMedium),
                                 ),
-                                StockStatusChip(status: product.stockStatus),
+                                if (product.isArchived)
+                                  const ArchivedChip()
+                                else
+                                  StockStatusChip(status: product.stockStatus),
                               ],
                             ),
                             Text(
@@ -185,8 +199,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                             ),
                             Text('Stock ${formatDt(product.currentStock)} · Seuil ${formatDt(product.minimumStock)}'),
                             Text('Achat ${formatDt(product.purchasePrice)} · Vente ${formatDt(product.salePrice)}'),
-                            if (!product.isActive)
-                              Text('Inactif', style: TextStyle(color: Theme.of(context).colorScheme.error)),
                           ],
                         ),
                       );
@@ -199,6 +211,40 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 message: userFacingMessage(error),
                 onRetry: () => ref.invalidate(productsListProvider(_query)),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ArchivedBanner extends StatelessWidget {
+  const _ArchivedBanner({required this.product});
+
+  final Product product;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final date = product.archivedAt == null
+        ? null
+        : DateFormat('dd/MM/yyyy HH:mm').format(product.archivedAt!.toLocal());
+    final details = [
+      if (date != null) 'le $date',
+      if (product.archivedByName != null) 'par ${product.archivedByName}',
+    ].join(' ');
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(color: colors.neutralContainer, borderRadius: AppRadius.mdAll),
+      child: Row(
+        children: [
+          Icon(Icons.archive_outlined, color: colors.neutral),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              details.isEmpty ? 'Produit archivé' : 'Produit archivé $details',
+              style: TextStyle(color: colors.neutral, fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -225,7 +271,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   final _minStock = TextEditingController(text: '0');
   String _unit = 'PACK';
   String? _categoryId;
-  bool _isActive = true;
+  Product? _product;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -256,7 +302,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           _minStock.text = formatDecimalForInput(product.minimumStock);
           _unit = product.unit;
           _categoryId = product.categoryId;
-          _isActive = product.isActive;
+          _product = product;
         } else if (_categories.isNotEmpty) {
           _categoryId = _categories.first.id;
         }
@@ -301,7 +347,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       'purchasePrice': decimalForApi(_purchase.text),
       'salePrice': decimalForApi(_sale.text),
       'minimumStock': _minStock.text.trim().isEmpty ? '0' : decimalForApi(_minStock.text),
-      'isActive': _isActive,
+      // Status changes go through archive/restore (ADMIN, audited).
     };
     try {
       if (widget.productId == null) {
@@ -336,6 +382,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          if (_product?.isArchived ?? false) ...[
+            _ArchivedBanner(product: _product!),
+            const SizedBox(height: 12),
+          ],
           TextField(controller: _name, decoration: const InputDecoration(labelText: 'Nom')),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
@@ -374,22 +424,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           ),
           const SizedBox(height: 12),
           TextField(controller: _description, decoration: const InputDecoration(labelText: 'Description (optionnel)')),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Actif'),
-            value: _isActive,
-            onChanged: (value) async {
-              if (!value) {
-                final confirmed = await confirmAction(
-                  context,
-                  title: 'Désactiver le produit',
-                  message: 'Ce produit ne pourra plus être sélectionné dans les achats et ventes.',
-                );
-                if (!confirmed) return;
-              }
-              setState(() => _isActive = value);
-            },
-          ),
           if (widget.productId != null) ...[
             const SizedBox(height: 12),
             Text('Historique', style: Theme.of(context).textTheme.titleMedium),
@@ -404,9 +438,98 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
             ),
           ],
           if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          const SizedBox(height: 12),
           FilledButton(onPressed: _saving ? null : _save, child: const Text('Enregistrer')),
+          // ADMIN only (enforced by the backend as well).
+          if (widget.productId != null && ref.watch(isAdminProvider)) ...[
+            const SizedBox(height: 24),
+            if (_product?.isArchived ?? false)
+              FilledButton.tonalIcon(
+                onPressed: _saving ? null : _restore,
+                icon: const Icon(Icons.unarchive_outlined),
+                label: const Text('Restaurer le produit'),
+              )
+            else
+              DangerButton(
+                label: 'Archiver le produit',
+                icon: Icons.archive_outlined,
+                onPressed: _saving ? null : _archiveOrDelete,
+              ),
+          ],
+          const SizedBox(height: 32),
         ],
       ),
     );
+  }
+
+  void _refreshCatalog() {
+    ref.invalidate(productsListProvider);
+    ref.invalidate(dashboardProvider);
+    ref.invalidate(stockListProvider);
+    ref.invalidate(movementsProvider);
+  }
+
+  Future<void> _archiveOrDelete() async {
+    final service = ref.read(productServiceProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final ProductDeletePreview preview;
+    try {
+      preview = await service.deletePreview(widget.productId!);
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(userFacingMessage(error))));
+      return;
+    }
+    if (!mounted) return;
+
+    final name = _name.text.trim();
+    final result = await showDangerActionDialog(
+      context,
+      title: preview.willDelete ? 'Supprimer le produit ?' : 'Archiver le produit ?',
+      confirmLabel: preview.willDelete ? 'Supprimer le produit' : 'Archiver le produit',
+      reasonRequired: false,
+      suggestions: const ['Plus vendu', 'Doublon', 'Erreur de saisie'],
+      consequences: preview.willDelete
+          ? [
+              '« $name » n’a aucun mouvement, aucun achat ni aucune vente : il sera définitivement supprimé.',
+            ]
+          : [
+              '« $name » sera masqué des listes, des sélecteurs d’achat et de vente et du tableau de bord.',
+              'Il restera visible dans l’historique, les mouvements et les journaux.',
+              'Vous pourrez le restaurer depuis le filtre « Archivés ».',
+            ],
+      warning: preview.hasStock
+          ? 'Ce produit a encore un stock de ${formatQuantity(preview.currentStock)}. '
+              'Ce stock ne sera pas modifié, mais il ne comptera plus dans la valeur du stock du tableau de bord.'
+          : null,
+    );
+    if (result == null) return;
+
+    setState(() => _saving = true);
+    try {
+      final deleted = await service.delete(widget.productId!, reason: result.reason);
+      _refreshCatalog();
+      messenger.showSnackBar(SnackBar(content: Text(deleted ? 'Produit supprimé' : 'Produit archivé')));
+      if (mounted) context.pop();
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(userFacingMessage(error))));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _restore() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _saving = true);
+    try {
+      final restored = await ref.read(productServiceProvider).restore(widget.productId!);
+      _refreshCatalog();
+      if (!mounted) return;
+      setState(() => _product = restored);
+      messenger.showSnackBar(const SnackBar(content: Text('Produit restauré')));
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(userFacingMessage(error))));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 }
